@@ -166,6 +166,49 @@ func TestVisibleWidthSkipsANSI(t *testing.T) {
 	}
 }
 
+func TestRuneAndDisplayWidthHandleWideRunes(t *testing.T) {
+	// ASCII and Latin-1 accents are one cell; CJK ideographs and fullwidth
+	// forms are two; combining marks are zero.
+	if w := runeWidth('a'); w != 1 {
+		t.Fatalf("width('a') = %d, want 1", w)
+	}
+	if w := runeWidth('é'); w != 1 {
+		t.Fatalf("width('é') = %d, want 1", w)
+	}
+	if w := runeWidth('中'); w != 2 {
+		t.Fatalf("width('中') = %d, want 2", w)
+	}
+	if w := runeWidth('́'); w != 0 { // combining acute accent
+		t.Fatalf("width(combining) = %d, want 0", w)
+	}
+	// A mixed CJK/ASCII string sums per-cell.
+	if w := displayWidth("你好a"); w != 5 {
+		t.Fatalf("displayWidth(\"你好a\") = %d, want 5", w)
+	}
+	// visibleWidth (ANSI-stripping) agrees on wide runes.
+	if w := visibleWidth("\033[2m中\033[0m"); w != 2 {
+		t.Fatalf("visibleWidth wide = %d, want 2", w)
+	}
+}
+
+func TestEditLoopCursorAccountsForWideRunes(t *testing.T) {
+	// Typing a CJK char must move the cursor two cells, not one, so the final
+	// reposition after "中" (prompt width 2 + 2 cells) lands at column 4.
+	var out bytes.Buffer
+	e := editorWithOutput("中", &out)
+	// Drive one render by feeding the rune then EOF (no submit needed).
+	if _, err := e.editLoop("> "); err == nil {
+		t.Fatalf("expected EOF error from truncated input")
+	}
+	s := out.String()
+	if !strings.Contains(s, "\033[4C") {
+		t.Fatalf("cursor not repositioned to column 4 for wide rune:\n%q", s)
+	}
+	if strings.Contains(s, "\033[3C") {
+		t.Fatalf("cursor used rune-count column 3 (wide rune miscounted):\n%q", s)
+	}
+}
+
 func TestEditLoopRendersContinuationAndClears(t *testing.T) {
 	// "foo" + Shift+Enter + "bar" builds a two-line buffer; the continuation
 	// line is indented with the dim marker and each redraw clears the block.

@@ -175,9 +175,9 @@ func (b *mlBuffer) enterContinues() bool {
 	return k%2 == 1
 }
 
-// visibleWidth returns the number of columns s occupies, skipping ANSI CSI
-// escape sequences so a colored prompt still aligns its continuation lines.
-// Runes count as one column each (no wide-character handling).
+// visibleWidth returns the number of terminal columns s occupies, skipping ANSI
+// CSI escape sequences so a colored prompt still aligns its continuation lines.
+// Wide runes (CJK ideographs, fullwidth forms, most emoji) count as two columns.
 func visibleWidth(s string) int {
 	w := 0
 	for i := 0; i < len(s); {
@@ -194,11 +194,57 @@ func visibleWidth(s string) int {
 			}
 			continue
 		}
-		_, size := utf8.DecodeRuneInString(s[i:])
+		r, size := utf8.DecodeRuneInString(s[i:])
 		i += size
-		w++
+		w += runeWidth(r)
 	}
 	return w
+}
+
+// displayWidth returns the number of terminal columns the plain string s
+// occupies, summing each rune's cell width. Unlike visibleWidth it does not
+// strip ANSI escapes — callers pass already-plain buffer text.
+func displayWidth(s string) int {
+	w := 0
+	for _, r := range s {
+		w += runeWidth(r)
+	}
+	return w
+}
+
+// runeWidth reports how many terminal cells a rune occupies: 0 for combining /
+// zero-width marks, 2 for East Asian wide and fullwidth characters (and most
+// emoji), 1 otherwise. This is what keeps the cursor aligned when the line
+// contains CJK text, where one rune spans two columns.
+func runeWidth(r rune) int {
+	switch {
+	case r == 0:
+		return 0
+	case (r >= 0x0300 && r <= 0x036F), // combining diacritical marks
+		(r >= 0x1AB0 && r <= 0x1AFF), // combining diacritical marks extended
+		(r >= 0x1DC0 && r <= 0x1DFF), // combining diacritical marks supplement
+		(r >= 0x20D0 && r <= 0x20FF), // combining marks for symbols
+		(r >= 0xFE20 && r <= 0xFE2F), // combining half marks
+		r == 0x200B:                  // zero width space
+		return 0
+	case (r >= 0x1100 && r <= 0x115F), // Hangul Jamo
+		(r >= 0x2E80 && r <= 0x303E),   // CJK radicals, Kangxi, CJK symbols
+		(r >= 0x3041 && r <= 0x33FF),   // Hiragana, Katakana, CJK compat
+		(r >= 0x3400 && r <= 0x4DBF),   // CJK Ext A
+		(r >= 0x4E00 && r <= 0x9FFF),   // CJK Unified Ideographs
+		(r >= 0xA000 && r <= 0xA4CF),   // Yi
+		(r >= 0xAC00 && r <= 0xD7A3),   // Hangul syllables
+		(r >= 0xF900 && r <= 0xFAFF),   // CJK compat ideographs
+		(r >= 0xFE10 && r <= 0xFE19),   // vertical forms
+		(r >= 0xFE30 && r <= 0xFE6F),   // CJK compat forms
+		(r >= 0xFF00 && r <= 0xFF60),   // fullwidth forms
+		(r >= 0xFFE0 && r <= 0xFFE6),   // fullwidth signs
+		(r >= 0x1F300 && r <= 0x1FAFF), // emoji & pictographs
+		(r >= 0x20000 && r <= 0x3FFFD): // CJK Ext B and beyond
+		return 2
+	default:
+		return 1
+	}
 }
 
 // runeOffset converts a rune column into a byte offset within s.
@@ -464,12 +510,15 @@ func (e *replLineEditor) editLoop(prompt string) (string, error) {
 		}
 		// Reposition to the logical (row, col): after the draw the cursor sits
 		// at the end of the last line, so climb to the target row, then step
-		// right past the prefix and the column's runes.
+		// right past the prefix and the display width of the runes left of the
+		// cursor (wide CJK runes span two columns, so count cells, not runes).
 		if up := len(buf.lines) - 1 - buf.row; up > 0 {
 			fmt.Fprintf(e.out, "\033[%dA", up)
 		}
 		fmt.Fprint(e.out, "\r")
-		if col := promptW + buf.col; col > 0 {
+		curLine := buf.lines[buf.row]
+		cursorCells := displayWidth(curLine[:runeOffset(curLine, buf.col)])
+		if col := promptW + cursorCells; col > 0 {
 			fmt.Fprintf(e.out, "\033[%dC", col)
 		}
 		prevCursorRow = buf.row
