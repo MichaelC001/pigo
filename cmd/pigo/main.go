@@ -73,6 +73,15 @@ func main() {
 	}
 	flag.Parse()
 
+	// Overlay ~/.config/pigo/config.toml: file values replace built-in defaults,
+	// but any flag the user set on the command line still wins (CLI > file >
+	// default). A malformed file warns but does not abort — defaults apply.
+	if cfg, err := loadFileConfig(fileConfigPath()); err != nil {
+		fmt.Fprintf(os.Stderr, "pigo: %v\n", err)
+	} else {
+		applyFileConfig(&opts, cfg, flag.CommandLine.Changed)
+	}
+
 	// --version is a standalone action: print build metadata and exit.
 	if opts.showVersion {
 		fmt.Printf("pigo %s (commit %s, built %s)\n", version, commit, date)
