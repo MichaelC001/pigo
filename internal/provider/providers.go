@@ -330,6 +330,7 @@ func encodeAnthropicRequest(req CompletionRequest, models []Model) ([]byte, erro
 		}
 	}
 	body := map[string]any{
+		"model":    req.Model,
 		"messages": msgs,
 		"stream":   true,
 	}

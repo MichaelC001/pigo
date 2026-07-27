@@ -9,6 +9,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 )
@@ -163,4 +164,36 @@ func assertAuthHeaderForScheme(t *testing.T, req *http.Request, scheme string) {
 	if got := req.Header.Get("anthropic-version"); got != anthropicAPIVersion {
 		t.Errorf("anthropic-version = %q, want %q", got, anthropicAPIVersion)
 	}
+}
+
+// TestEncodeAnthropicRequestIncludesModel guards a required field of the
+// Anthropic Messages API: the request body must carry the "model" id. Omitting
+// it makes the public API return 400 and OpenAI-compatible gateways return an
+// empty/error response, which the SSE decoder silently turns into an empty
+// assistant turn — a confusing "no output, no error" failure.
+func TestEncodeAnthropicRequestIncludesModel(t *testing.T) {
+	req := CompletionRequest{
+		Model: "claude-opus-4-8",
+	}
+	body, err := encodeAnthropicRequest(req, nil)
+	if err != nil {
+		t.Fatalf("encodeAnthropicRequest: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if got, ok := decoded["model"]; !ok {
+		t.Fatalf("request body missing required \"model\" field; keys=%v", keysOf(decoded))
+	} else if got != "claude-opus-4-8" {
+		t.Errorf("model = %v, want claude-opus-4-8", got)
+	}
+}
+
+func keysOf(m map[string]any) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	return ks
 }
