@@ -39,6 +39,8 @@ type Theme struct {
 	ScrollThumb lipgloss.Style
 	// ScrollTrack styles the transcript scrollbar track (dim shaded column).
 	ScrollTrack lipgloss.Style
+	// Spinner styles the animated "working" indicator glyph + verb (warm coral).
+	Spinner lipgloss.Style
 }
 
 // Palette color numbers use the ANSI 256-color cube so the theme renders
@@ -54,6 +56,7 @@ const (
 	colorUser    = "15"  // bright white
 	colorAssist  = "252" // near-white
 	colorStatus  = "62"  // status bar background (violet)
+	colorSpinner = "173" // spinner glyph/verb (warm coral, matches Claude Code)
 )
 
 // DefaultTheme returns the built-in palette described in the SPEC: success
@@ -91,6 +94,9 @@ func DefaultTheme() Theme {
 			Foreground(lipgloss.Color(colorScroll)),
 		ScrollTrack: lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colorTrack)),
+		Spinner: lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colorSpinner)).
+			Bold(true),
 	}
 }
 

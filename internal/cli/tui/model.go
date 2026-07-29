@@ -3,8 +3,10 @@ package tui
 import (
 	"os"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/smallnest/pigo/internal/agentcore"
 	"github.com/smallnest/pigo/internal/cli"
@@ -108,6 +110,15 @@ type Model struct {
 	// on the transcript scrollbar column, so subsequent motion events drag the
 	// thumb (and scroll the viewport) until the button is released.
 	draggingScrollbar bool
+
+	// sel is the current mouse text selection over the rendered shell (screen
+	// cells). A left-press off the scrollbar starts it, drag extends it, and it
+	// persists after release so Ctrl+C can copy the highlighted text.
+	sel selection
+
+	// spinner is the animated "working" indicator (verb + elapsed/token/effort
+	// stats) shown on the row above the input while a run is in flight.
+	spinner spinner
 }
 
 // NewModel builds the root model from the assembled Options. It reads the
@@ -143,6 +154,7 @@ func NewModel(opts Options) Model {
 		slash:      newSlashRegistry(opts, live),
 		live:       live,
 		menu:       newSlashMenu(theme),
+		spinner:    newSpinner(theme),
 	}
 }
 
@@ -205,37 +217,79 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// scroll; enabling MouseModeCellMotion in View is what makes the terminal
 		// deliver these events under the alt-screen at all.
 		cmd := m.transcript.update(msg)
+		m.sel = selection{}
 		return m, cmd
 
 	case tea.MouseClickMsg:
-		// A left press on the scrollbar column (the transcript's rightmost cell)
-		// grabs the thumb: jump the viewport to that row and start dragging so the
-		// following motion events track the cursor. Presses elsewhere fall through
-		// untouched.
-		if msg.Button == tea.MouseLeft && m.onScrollbar(msg.X, msg.Y) {
-			m.draggingScrollbar = true
-			m.transcript.scrollToRow(msg.Y)
+		// A left press on the scrollbar column grabs the thumb (jump + drag). A left
+		// press anywhere else begins a text selection at that cell, replacing any
+		// prior one; a bare click (no drag) leaves it empty so it clears the old
+		// highlight without starting a copyable range.
+		if msg.Button == tea.MouseLeft {
+			if m.onScrollbar(msg.X, msg.Y) {
+				m.draggingScrollbar = true
+				m.transcript.scrollToRow(msg.Y)
+				return m, nil
+			}
+			m.sel = selection{active: true, anchor: point{msg.X, msg.Y}, cursor: point{msg.X, msg.Y}}
 			return m, nil
 		}
 		return m, nil
 
 	case tea.MouseMotionMsg:
 		// While the thumb is grabbed, vertical motion drags it regardless of the
-		// cursor's column — matching how a desktop scrollbar keeps tracking once you
-		// hold it.
+		// cursor's column. Otherwise, motion after a left press extends the text
+		// selection to the current cell.
 		if m.draggingScrollbar {
 			m.transcript.scrollToRow(msg.Y)
+			return m, nil
+		}
+		if m.sel.active {
+			m.sel.cursor = point{msg.X, msg.Y}
 		}
 		return m, nil
 
 	case tea.MouseReleaseMsg:
 		m.draggingScrollbar = false
+		if m.sel.active {
+			m.sel.cursor = point{msg.X, msg.Y}
+		}
+		return m, nil
+
+	case tea.PasteMsg:
+		// Bracketed paste (e.g. Cmd+V / right-click paste): the terminal delivers
+		// the whole clipboard payload as one message. Route it to the editor so it
+		// is inserted whole (textarea splits embedded newlines correctly), then
+		// re-lay out since a multi-line paste can grow the editor and refresh the
+		// slash menu in case the paste starts a "/name".
+		if !m.running {
+			return m.feedInput(msg)
+		}
+		return m, nil
+
+	case tea.ClipboardMsg:
+		// OSC52 clipboard read reply (from tea.ReadClipboard on Ctrl+V). Insert it
+		// via the same paste path as bracketed paste.
+		if !m.running {
+			return m.feedInput(tea.PasteMsg{Content: msg.Content})
+		}
 		return m, nil
 
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
+	case spinnerTickMsg:
+		// Advance the working animation and schedule the next frame, but only while
+		// a run is in flight; once idle the tick is not re-issued so the spinner
+		// stops without a lingering goroutine.
+		if !m.running {
+			return m, nil
+		}
+		m.spinner.advance()
+		return m, m.tickSpinner()
+
 	case textDeltaMsg:
+		m.spinner.addTokens(msg.delta)
 		m.transcript.appendDelta(msg.delta)
 		return m, m.pumpNext()
 
@@ -285,6 +339,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case runEndMsg:
 		m.running = false
 		m.runCh = nil
+		m.spinner.stop()
+		m.relayout()
 		if msg.err != nil {
 			m.transcript.addSystem("运行结束：" + msg.err.Error())
 		}
@@ -340,19 +396,42 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.String() {
-	case "esc", "ctrl+c":
-		// Two-stage interrupt (FR-14): while a run is in flight the first press
-		// interrupts that run (cancel the run ctx / signal the pump) and stays in
-		// the program; when idle it quits.
-		if m.running {
-			if m.interruptFn != nil {
-				m.interruptFn()
+	case "ctrl+c":
+		// Ctrl+C copies the current mouse selection when there is one (over OSC52),
+		// clearing it afterward; with no selection it keeps its interrupt-or-quit
+		// role. Copying works even mid-run, so grabbing streamed output never
+		// interrupts the run.
+		if !m.sel.empty() {
+			text := m.selectedText()
+			m.sel = selection{}
+			if text != "" {
+				return m, tea.SetClipboard(text)
 			}
-			m.transcript.addSystem("（正在中断当前运行…）")
 			return m, nil
 		}
-		m.quitting = true
-		return m, tea.Quit
+		return m.interruptOrQuit()
+	case "super+c":
+		// Cmd+C on macOS is the platform-standard copy: copy the mouse selection
+		// when there is one (clearing it), else the whole input buffer. Unlike
+		// Ctrl+C it never interrupts/quits — Cmd+C means "copy" on macOS. Most
+		// terminals intercept Cmd+C for their own native copy and never deliver it
+		// here; this branch serves terminals that forward the Super modifier.
+		if !m.sel.empty() {
+			text := m.selectedText()
+			m.sel = selection{}
+			if text != "" {
+				return m, tea.SetClipboard(text)
+			}
+			return m, nil
+		}
+		if !m.running {
+			if v := m.input.Value(); v != "" {
+				return m, tea.SetClipboard(v)
+			}
+		}
+		return m, nil
+	case "esc":
+		return m.interruptOrQuit()
 	case "ctrl+o":
 		// Toggle the most-recent tool card between its capped preview and the full
 		// response tree, then re-flow so the change shows inline (#389).
@@ -380,11 +459,42 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "pgup", "pgdown":
 		// Page scrolling reaches the transcript viewport whether idle or running,
-		// so history stays readable while a run streams. Line-oriented keys (up /
-		// down / home / end) belong to the multi-line editor and are delegated
-		// below.
+		// so history stays readable while a run streams. Scrolling shifts the
+		// content under a screen-anchored selection, so drop the selection to avoid
+		// a stale highlight. Line-oriented keys (up / down / home / end) belong to
+		// the multi-line editor and are delegated below.
+		m.sel = selection{}
 		cmd := m.transcript.update(msg)
 		return m, cmd
+	case "ctrl+v":
+		// Explicit paste key: ask the terminal for its clipboard over OSC52 (the
+		// reply arrives as tea.ClipboardMsg). This is intercepted before textarea
+		// so its own Ctrl+V binding — which reads via an external process and
+		// returns an unexported message the model can't route — is bypassed. The
+		// common Cmd+V path does not reach here; it arrives as a bracketed
+		// tea.PasteMsg handled in Update.
+		if !m.running {
+			return m, tea.ReadClipboard
+		}
+		return m, nil
+	case "super+v":
+		// Cmd+V on macOS is the platform-standard paste. Most terminals turn it
+		// into a bracketed paste (tea.PasteMsg, handled in Update); this branch
+		// covers terminals that instead forward the Super modifier as a key, asking
+		// the terminal for its clipboard over OSC52 (reply arrives as ClipboardMsg).
+		if !m.running {
+			return m, tea.ReadClipboard
+		}
+		return m, nil
+	case "ctrl+y":
+		// Copy: the editor has no text selection, so this copies the whole buffer
+		// to the system clipboard over OSC52. A no-op on an empty buffer.
+		if !m.running {
+			if v := m.input.Value(); v != "" {
+				return m, tea.SetClipboard(v)
+			}
+		}
+		return m, nil
 	}
 
 	// Everything else is editing input; gated on idle so keystrokes never corrupt
@@ -491,6 +601,54 @@ func (m Model) startPrompt(prompt string) (tea.Model, tea.Cmd) {
 	ch, cmd := m.startRunFn(prompt)
 	m.runCh = ch
 	m.running = true
+	m.spinner.begin(time.Now(), m.thinkingLabel())
+	m.relayout()
+	return m, tea.Batch(cmd, m.tickSpinner())
+}
+
+// thinkingLabel returns the current thinking-effort label for the spinner stats
+// (e.g. "medium"), or "" when no thinking level is configured so the stat is
+// omitted. It reads the live config the /model command mutates, falling back to
+// the launch Options.
+func (m Model) thinkingLabel() string {
+	if m.live != nil && m.live.ThinkingLevel != "" {
+		return string(m.live.ThinkingLevel)
+	}
+	return string(m.opts.ThinkingLevel)
+}
+
+// tickSpinner schedules the next spinner animation frame. The model re-issues it
+// on each spinnerTickMsg while running, so the animation self-sustains until the
+// run ends (the tick is simply not re-issued once idle).
+func (m Model) tickSpinner() tea.Cmd {
+	return tea.Tick(spinnerInterval, func(t time.Time) tea.Msg {
+		return spinnerTickMsg(t)
+	})
+}
+
+// interruptOrQuit is the shared Esc / bare-Ctrl+C action: a two-stage interrupt
+// (FR-14) that stops an in-flight run on the first press and stays in the
+// program, or quits when idle.
+func (m Model) interruptOrQuit() (tea.Model, tea.Cmd) {
+	if m.running {
+		if m.interruptFn != nil {
+			m.interruptFn()
+		}
+		m.transcript.addSystem("（正在中断当前运行…）")
+		return m, nil
+	}
+	m.quitting = true
+	return m, tea.Quit
+}
+
+// feedInput forwards a message (a paste payload) to the editor, then refreshes
+// the slash menu and re-lays out because inserted text can add lines (growing
+// the editor) or begin a "/name". It is the shared tail of the paste handlers.
+func (m Model) feedInput(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	m.menu.refresh(m.input.Value(), m.slash)
+	m.relayout()
 	return m, cmd
 }
 
@@ -515,6 +673,20 @@ func (m Model) View() tea.View {
 		return tea.View{AltScreen: true}
 	}
 
+	content := m.applySelection(m.renderContent())
+
+	// MouseModeCellMotion enables click/release/wheel events. Without it the
+	// alt-screen swallows the wheel (no native scrollback), so history could only
+	// be reached via PgUp/PgDn; enabling it lets the wheel scroll the transcript
+	// and drives both scrollbar drag and mouse text selection.
+	return tea.View{Content: content, AltScreen: true, MouseMode: tea.MouseModeCellMotion}
+}
+
+// renderContent builds the full-screen shell string (transcript, autocomplete
+// popup, input editor, status bar) without any selection overlay. View wraps it
+// with applySelection for display, and selectedText reuses it to extract the
+// copied text from the exact rows the user sees.
+func (m Model) renderContent() string {
 	width := m.width
 	if width <= 0 {
 		width = 80
@@ -545,6 +717,14 @@ func (m Model) View() tea.View {
 			b.WriteByte('\n')
 		}
 	}
+	// The working spinner sits on its own row just above the input while a run is
+	// in flight (relayout reserves the row so the transcript shrinks to fit).
+	if m.running {
+		if line := m.spinner.view(width); line != "" {
+			b.WriteString(line)
+			b.WriteByte('\n')
+		}
+	}
 	// The autocomplete popup, when open, renders just above the input line as an
 	// overlay (it contributes no rows while idle, so the empty-shell layout is
 	// unchanged).
@@ -557,11 +737,62 @@ func (m Model) View() tea.View {
 	// The status bar is the final line, pinned to the very bottom of the shell
 	// below the input editor.
 	b.WriteString(status)
+	return b.String()
+}
 
-	// MouseModeCellMotion enables click/release/wheel events. Without it the
-	// alt-screen swallows the wheel (no native scrollback), so history could only
-	// be reached via PgUp/PgDn; enabling it lets the wheel scroll the transcript.
-	return tea.View{Content: b.String(), AltScreen: true, MouseMode: tea.MouseModeCellMotion}
+// applySelection overlays the mouse selection highlight onto the rendered
+// content, inverting the selected cells like a terminal's own selection. Only
+// rows the selection intersects are rewritten (as plain text with the span
+// inverted); untouched rows keep their original coloring. It is a no-op when the
+// selection is empty.
+func (m Model) applySelection(content string) string {
+	if m.sel.empty() {
+		return content
+	}
+	start, end := m.sel.ordered()
+	hi := lipgloss.NewStyle().Reverse(true)
+	rows := strings.Split(content, "\n")
+	for y := start.y; y <= end.y && y < len(rows); y++ {
+		if y < 0 {
+			continue
+		}
+		c0, c1, ok := rowRange(start, end, y)
+		if !ok {
+			continue
+		}
+		rows[y], _ = selectRow(rows[y], c0, c1, hi)
+	}
+	return strings.Join(rows, "\n")
+}
+
+// selectedText extracts the plain text under the current selection from the rows
+// the user sees, joining rows with newlines and trimming each row's trailing
+// padding so copied text has no ragged whitespace tail. It returns "" when the
+// selection is empty.
+func (m Model) selectedText() string {
+	if m.sel.empty() {
+		return ""
+	}
+	start, end := m.sel.ordered()
+	rows := strings.Split(m.renderContent(), "\n")
+	var b strings.Builder
+	wrote := false
+	for y := start.y; y <= end.y && y < len(rows); y++ {
+		if y < 0 {
+			continue
+		}
+		c0, c1, ok := rowRange(start, end, y)
+		if !ok {
+			continue
+		}
+		_, text := selectRow(rows[y], c0, c1, lipgloss.Style{})
+		if wrote {
+			b.WriteByte('\n')
+		}
+		b.WriteString(strings.TrimRight(text, " "))
+		wrote = true
+	}
+	return b.String()
 }
 
 // relayout re-sizes the transcript to the rows left after reserving the status
@@ -577,6 +808,9 @@ func (m *Model) relayout() {
 		return
 	}
 	rows := m.height - 1 - m.input.Height() - m.menu.rows()
+	if m.running {
+		rows-- // the working spinner occupies the row just above the input
+	}
 	if rows < 0 {
 		rows = 0
 	}
