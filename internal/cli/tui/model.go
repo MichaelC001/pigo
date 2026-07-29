@@ -131,6 +131,14 @@ type Model struct {
 	// pasteSeq is the monotonic counter behind the paste placeholder ids. It keeps
 	// climbing across submits so ids stay unique for the session.
 	pasteSeq int
+
+	// images maps the id shown in an "[Image #N]" placeholder to the temp PNG a
+	// Ctrl+V / Cmd+V image paste was saved to. submit expands the placeholder to an
+	// "@image:<path>" reference so BuildUserContent attaches the image as
+	// multimodal content (mirroring Claude Code's image paste).
+	images map[int]string
+	// imageSeq is the monotonic counter behind the image placeholder ids.
+	imageSeq int
 }
 
 // NewModel builds the root model from the assembled Options. It reads the
@@ -168,6 +176,7 @@ func NewModel(opts Options) Model {
 		menu:       newSlashMenu(theme),
 		spinner:    newSpinner(theme),
 		pastes:     make(map[int]string),
+		images:     make(map[int]string),
 	}
 }
 
@@ -284,6 +293,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Route through the same collapse-or-insert path as bracketed paste.
 		if !m.running {
 			return m.handlePaste(msg.Content)
+		}
+		return m, nil
+
+	case clipboardImageMsg:
+		// Reply to a Ctrl+V / Cmd+V image-read attempt. With an image, drop an
+		// "[Image #N]" placeholder (expanded to an @image reference at submit); with
+		// none, fall back to a normal OSC52 text read so plain-text paste still works.
+		if !m.running {
+			if msg.ok {
+				return m.handleImagePaste(msg.path)
+			}
+			return m, tea.ReadClipboard
 		}
 		return m, nil
 
@@ -479,23 +500,24 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		cmd := m.transcript.update(msg)
 		return m, cmd
 	case "ctrl+v":
-		// Explicit paste key: ask the terminal for its clipboard over OSC52 (the
-		// reply arrives as tea.ClipboardMsg). This is intercepted before textarea
-		// so its own Ctrl+V binding — which reads via an external process and
-		// returns an unexported message the model can't route — is bypassed. The
-		// common Cmd+V path does not reach here; it arrives as a bracketed
-		// tea.PasteMsg handled in Update.
+		// Explicit paste key: first try to pull an image off the clipboard (Claude
+		// Code-style image paste); the reply arrives as clipboardImageMsg and, when
+		// no image is present, falls back to an OSC52 text read (tea.ClipboardMsg).
+		// This is intercepted before textarea so its own Ctrl+V binding — which reads
+		// via an external process and returns an unexported message the model can't
+		// route — is bypassed. The common Cmd+V path does not reach here; it arrives
+		// as a bracketed tea.PasteMsg handled in Update.
 		if !m.running {
-			return m, tea.ReadClipboard
+			return m, readClipboardImage
 		}
 		return m, nil
 	case "super+v":
 		// Cmd+V on macOS is the platform-standard paste. Most terminals turn it
 		// into a bracketed paste (tea.PasteMsg, handled in Update); this branch
-		// covers terminals that instead forward the Super modifier as a key, asking
-		// the terminal for its clipboard over OSC52 (reply arrives as ClipboardMsg).
+		// covers terminals that instead forward the Super modifier as a key. Try an
+		// image read first, falling back to an OSC52 text read when none is present.
 		if !m.running {
-			return m, tea.ReadClipboard
+			return m, readClipboardImage
 		}
 		return m, nil
 	case "ctrl+y":
@@ -529,13 +551,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // and a system note without launching anything, and leaves the editor ready for
 // the next line.
 func (m Model) submit() (tea.Model, tea.Cmd) {
-	prompt := strings.TrimSpace(m.expandPastes(m.input.Value()))
+	prompt := strings.TrimSpace(m.expandImages(m.expandPastes(m.input.Value())))
 	if prompt == "" {
 		return m, nil
 	}
 	// The placeholders have been expanded into the prompt, so the stored paste
-	// bodies are consumed; drop them (the id counter keeps climbing).
+	// bodies and image paths are consumed; drop them (the id counters keep climbing).
 	m.pastes = make(map[int]string)
+	m.images = make(map[int]string)
 	// A "/name ..." line is a slash-command invocation, not a prompt: resolve it
 	// against the shared registry (same as the REPL) rather than sending it to the
 	// agent verbatim.
@@ -710,6 +733,51 @@ func (m Model) expandPastes(s string) string {
 		}
 		if body, ok := m.pastes[id]; ok {
 			return body
+		}
+		return tok
+	})
+}
+
+// handleImagePaste stashes a pasted image (already saved to a temp PNG at path)
+// and drops a compact "[Image #N]" placeholder into the composer, mirroring the
+// text-paste placeholder. submit expands it into an "@image:<path>" reference so
+// BuildUserContent attaches the image as multimodal content. An empty path falls
+// back to a plain text read.
+func (m Model) handleImagePaste(path string) (tea.Model, tea.Cmd) {
+	if path == "" {
+		return m, tea.ReadClipboard
+	}
+	if m.images == nil {
+		m.images = make(map[int]string)
+	}
+	m.imageSeq++
+	id := m.imageSeq
+	m.images[id] = path
+	placeholder := fmt.Sprintf("[Image #%d]", id)
+	return m.feedInput(tea.PasteMsg{Content: placeholder})
+}
+
+// imagePlaceholderRe matches the "[Image #N]" tokens handleImagePaste leaves in
+// the composer, capturing the id so expandImages can swap the stored temp path
+// back in as an "@image:<path>" reference at submit.
+var imagePlaceholderRe = regexp.MustCompile(`\[Image #(\d+)\]`)
+
+// expandImages replaces every image placeholder in s with an "@image:<path>"
+// reference so BuildUserContent reads and attaches the pasted image. An unknown id
+// (e.g. the user edited the token) is left as-is. It returns s unchanged when no
+// images are stashed.
+func (m Model) expandImages(s string) string {
+	if len(m.images) == 0 {
+		return s
+	}
+	return imagePlaceholderRe.ReplaceAllStringFunc(s, func(tok string) string {
+		sm := imagePlaceholderRe.FindStringSubmatch(tok)
+		id, err := strconv.Atoi(sm[1])
+		if err != nil {
+			return tok
+		}
+		if p, ok := m.images[id]; ok {
+			return "@image:" + p
 		}
 		return tok
 	})

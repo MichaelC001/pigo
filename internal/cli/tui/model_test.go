@@ -118,6 +118,48 @@ func TestModelCtrlCFallsBackToQuit(t *testing.T) {
 	}
 }
 
+// TestModelImagePasteInsertsPlaceholder verifies a clipboard image (already saved
+// to a temp file) is stashed and shown in the composer as a compact "[Image #N]"
+// placeholder, and that expandImages swaps it for an "@image:<path>" reference at
+// submit so BuildUserContent attaches it as multimodal content.
+func TestModelImagePasteInsertsPlaceholder(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 40, Height: 12})
+	next, _ := m.Update(clipboardImageMsg{path: "/tmp/pigo-clip-1.png", ok: true})
+	m = next.(Model)
+
+	if got, want := m.input.Value(), "[Image #1]"; got != want {
+		t.Errorf("composer showed %q, want placeholder %q", got, want)
+	}
+	if got := m.expandImages(m.input.Value()); got != "@image:/tmp/pigo-clip-1.png" {
+		t.Errorf("expandImages = %q, want the @image reference", got)
+	}
+}
+
+// TestModelImagePasteFallsBackToText verifies an empty clipboard image reply
+// (ok=false) falls back to an OSC52 text read rather than inserting anything.
+func TestModelImagePasteFallsBackToText(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 40, Height: 12})
+	next, cmd := m.Update(clipboardImageMsg{ok: false})
+	if cmd == nil {
+		t.Fatal("no image on the clipboard should fall back to a text read command")
+	}
+	if got := next.(Model).input.Value(); got != "" {
+		t.Errorf("composer should stay empty on fallback, got %q", got)
+	}
+}
+
+// TestModelExpandImagesUnknownID verifies an unknown image id is left untouched.
+func TestModelExpandImagesUnknownID(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 40, Height: 12})
+	m = apply(t, m, clipboardImageMsg{path: "/tmp/a.png", ok: true})
+
+	got := m.expandImages("see [Image #1] and [Image #7]")
+	want := "see @image:/tmp/a.png and [Image #7]"
+	if got != want {
+		t.Errorf("expandImages = %q, want %q", got, want)
+	}
+}
+
 // keyPress builds a KeyPressMsg matching String()==s for the simple keys used
 // in these tests (ctrl+<letter>).
 func keyPress(s string) tea.KeyPressMsg {
