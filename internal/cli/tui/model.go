@@ -193,6 +193,7 @@ func (m Model) withSession(s *runSession, history []agentcore.Message) Model {
 	// config the run loop reads (buildConfig), not the throwaway one NewModel made.
 	m.live = s.live
 	m.slash = newSlashRegistry(m.opts, s.live)
+	m.transcript.addBanner(renderBanner(m.theme, m.opts, m.cwd))
 	seedTranscript(&m.transcript, history)
 	return m
 }

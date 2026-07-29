@@ -28,6 +28,10 @@ const (
 	roleAssistant
 	roleSystem
 	roleTool
+	// roleBanner is the startup logo + config splash. Its text is pre-rendered
+	// (already colored, already laid out) and emitted verbatim, so reflow neither
+	// wraps it nor overrides its colors with a role style.
+	roleBanner
 )
 
 // transcriptBlock is one rendered turn in the transcript. text is the raw
@@ -105,6 +109,14 @@ func (t *transcript) addUser(text string) {
 // inline notes).
 func (t *transcript) addSystem(text string) {
 	t.blocks = append(t.blocks, transcriptBlock{role: roleSystem, text: text})
+	t.reflow()
+}
+
+// addBanner appends a pre-rendered splash block (startup logo + config). It is
+// emitted verbatim by renderBlock, so its colors and horizontal layout survive
+// reflow untouched.
+func (t *transcript) addBanner(text string) {
+	t.blocks = append(t.blocks, transcriptBlock{role: roleBanner, text: text})
 	t.reflow()
 }
 
@@ -362,6 +374,8 @@ func (t transcript) renderBlock(blk transcriptBlock, streaming bool) string {
 		return blk.card.render(t.theme, t.width)
 	}
 	switch blk.role {
+	case roleBanner:
+		return blk.text
 	case roleUser:
 		return t.theme.User.Render(WrapToWidth(blk.text, t.width))
 	case roleSystem:
