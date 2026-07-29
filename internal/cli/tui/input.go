@@ -47,21 +47,40 @@ type input struct {
 func newInput() input {
 	ta := textarea.New()
 	ta.Prompt = "> "
-	ta.Placeholder = "输入消息…（Enter 发送，Alt+Enter 换行）"
+	ta.Placeholder = "输入消息…（Enter 发送，Shift+Enter 换行）"
 	ta.ShowLineNumbers = false
 	ta.CharLimit = 0
+	// Let the textarea own its own height: DynamicHeight grows/shrinks it to the
+	// content between MinHeight (1) and MaxHeight (maxInputRows), and — critically
+	// — fixes the viewport scroll offset in the same pass. Doing it manually (an
+	// after-the-fact SetHeight in syncHeight) left a stale scroll offset: inserting
+	// a newline scrolled the cursor into view while the editor was still 1 row
+	// tall, pushing the first line off the top, and the later SetHeight never
+	// scrolled it back — so a two-line buffer rendered as two blank lines.
+	ta.MinHeight = 1
 	ta.MaxHeight = maxInputRows
+	ta.DynamicHeight = true
+	// textarea.New starts at defaultHeight (6). DynamicHeight only recomputes on
+	// edits, so pin the empty editor to one row up front — otherwise the shell
+	// would reserve six rows before the user has typed anything.
 	ta.SetHeight(1)
-	// Rebind InsertNewline from its default (Enter) to Alt+Enter, since plain
-	// Enter is the model's submit key (handleKey intercepts it before textarea
-	// sees it). Alt+Enter is used rather than Shift+Enter because Shift+Enter is
-	// only distinguishable from Enter on terminals speaking the Kitty keyboard
-	// protocol, and forcing that protocol on (Kitty flag 8) broke IME / CJK text
-	// input — so we rely on Alt+Enter, which every terminal reports distinctly
-	// (ESC-prefixed) without any keyboard-protocol enhancement.
+	// Rebind InsertNewline from its default (Enter) to the newline keys, since
+	// plain Enter is the model's submit key (handleKey intercepts it before
+	// textarea sees it). Shift+Enter is the primary, advertised binding: Bubble
+	// Tea v2 already enables the Kitty keyboard protocol's disambiguate flag
+	// (flag 1) on every View, so capable terminals (kitty, ghostty, wezterm,
+	// recent iTerm2) report Shift+Enter as a distinct CSI-u sequence rather than
+	// a bare CR. Crucially this is flag 1, NOT flag 8 (ReportAllKeysAsEscapeCodes)
+	// — flag 8 broke IME / CJK input because it strips associated text, whereas
+	// flag 1 only disambiguates special keys and leaves text entry untouched.
+	// On terminals without the protocol (macOS Terminal.app, tmux by default)
+	// Shift+Enter arrives byte-identical to Enter and would submit, so Ctrl+J (a
+	// literal LF, always distinct from Enter's CR) and Alt+Enter (ESC-prefixed,
+	// always distinct) are kept as silent fallbacks — a newline is guaranteed to
+	// work everywhere. All three split the line at the cursor and keep typed text.
 	ta.KeyMap.InsertNewline = key.NewBinding(
-		key.WithKeys("alt+enter"),
-		key.WithHelp("alt+enter", "insert newline"),
+		key.WithKeys("shift+enter", "ctrl+j", "alt+enter"),
+		key.WithHelp("shift+enter", "insert newline"),
 	)
 	// Draw the cursor into the rendered string: the model composes View as a
 	// plain string rather than driving textarea's real cursor reporting.
@@ -80,27 +99,12 @@ func newInput() input {
 // and returns the updated component. The model calls this only for keys it does
 // not intercept itself (submit / interrupt / quit), so textarea sees ordinary
 // editing keys — including Enter (newline) and CJK / emoji runes, which it
-// inserts whole. The visible height is re-synced to the line count afterwards so
-// the editor grows and shrinks with the content.
+// inserts whole. Height is owned by textarea's DynamicHeight (see newInput), so
+// there is nothing to re-sync here.
 func (in input) Update(msg tea.Msg) (input, tea.Cmd) {
 	var cmd tea.Cmd
 	in.ta, cmd = in.ta.Update(msg)
-	in.syncHeight()
 	return in, cmd
-}
-
-// syncHeight resizes the visible editor to the buffer's line count, clamped to
-// [1, maxInputRows]. It is called after every edit and after programmatic value
-// changes so the shell reserves exactly as many rows as the input needs.
-func (in *input) syncHeight() {
-	n := in.ta.LineCount()
-	if n < 1 {
-		n = 1
-	}
-	if n > maxInputRows {
-		n = maxInputRows
-	}
-	in.ta.SetHeight(n)
 }
 
 // Height reports the current visible row count of the editor so the model can
@@ -115,13 +119,11 @@ func (in input) Value() string { return in.ta.Value() }
 // used by slash autocomplete (Tab) to complete the buffer to the chosen command.
 func (in *input) SetValue(s string) {
 	in.ta.SetValue(s)
-	in.syncHeight()
 }
 
 // Clear empties the buffer and resets the cursor to the start.
 func (in *input) Clear() {
 	in.ta.Reset()
-	in.syncHeight()
 }
 
 // Focus enables editing and returns the cursor-blink Cmd.

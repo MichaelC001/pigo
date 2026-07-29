@@ -49,6 +49,14 @@ type transcript struct {
 	vp    viewport.Model
 	theme Theme
 
+	// totalWidth is the full width the transcript may occupy (terminal columns
+	// minus any chrome the model reserves). width (below) is the content width
+	// the blocks actually wrap to: it equals totalWidth when the content fits, or
+	// totalWidth-1 when it overflows and a scrollbar column must be held back.
+	// reflow recomputes width from totalWidth on every content change, so the bar
+	// column appears/disappears correctly even as a run streams in new lines.
+	totalWidth int
+
 	// width is the content width (terminal columns) the blocks wrap to. It is
 	// separate from the viewport's own width so reflow measurements stay stable
 	// even before the first size message.
@@ -71,7 +79,8 @@ func newTranscript(theme Theme) transcript {
 
 // setSize resizes the transcript's viewport and re-flows the blocks to the new
 // width. A non-positive dimension is clamped to zero so the viewport never sees
-// a negative extent.
+// a negative extent. width is the total space available; reflow decides whether
+// to spend one column on the scrollbar based on whether the content overflows.
 func (t *transcript) setSize(width, height int) {
 	if width < 0 {
 		width = 0
@@ -79,8 +88,7 @@ func (t *transcript) setSize(width, height int) {
 	if height < 0 {
 		height = 0
 	}
-	t.width = width
-	t.vp.SetWidth(width)
+	t.totalWidth = width
 	t.vp.SetHeight(height)
 	t.reflow()
 }
@@ -147,6 +155,48 @@ func (t *transcript) update(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
+// scrollToRow positions the viewport so the scrollbar thumb aligns with the
+// given viewport row y (0-based). It is the inverse of the thumb-position math
+// in scrollbar(): pressing or dragging on row y maps that row to the matching
+// scroll offset, so clicking the gutter jumps there and dragging the thumb
+// tracks the cursor. It is a no-op when the content fits (nothing to scroll).
+func (t *transcript) scrollToRow(y int) {
+	h := t.vp.Height()
+	if h <= 0 {
+		return
+	}
+	total := t.vp.TotalLineCount()
+	if total <= h {
+		return
+	}
+	thumb := h * h / total
+	if thumb < 2 {
+		thumb = 2
+	}
+	if thumb > h {
+		thumb = h
+	}
+	span := h - thumb // rows the thumb top can occupy
+	if span <= 0 {
+		return
+	}
+	// Center the grab on the thumb: aim its top at y minus half its body so the
+	// cursor sits roughly mid-thumb, then clamp into the track.
+	top := y - thumb/2
+	if top < 0 {
+		top = 0
+	}
+	if top > span {
+		top = span
+	}
+	maxOff := total - h
+	t.vp.SetYOffset(top * maxOff / span)
+}
+
+// viewportHeight reports the number of visible transcript rows, so the model can
+// tell whether a mouse Y falls within the scrollable region.
+func (t transcript) viewportHeight() int { return t.vp.Height() }
+
 // overflowing reports whether the transcript has more content than fits in the
 // viewport, i.e. there is history to scroll. relayout uses this to reserve the
 // scrollbar column only when scrolling is possible, and view uses it to decide
@@ -155,21 +205,54 @@ func (t transcript) overflowing() bool {
 	return t.vp.Height() > 0 && t.vp.TotalLineCount() > t.vp.Height()
 }
 
-// view renders the current visible slice of the transcript with a persistent
-// one-column vertical scrollbar down the right edge (FR-10). The scrollbar is
-// always present (relayout reserves its column) so it never flickers in and out:
-// a light-gray track (░) runs the full height and a darker thumb (█) marks the
-// visible window. When the whole transcript fits, the thumb fills the column.
+// view renders the current visible slice of the transcript. When the content
+// overflows the viewport a one-column vertical scrollbar is drawn down the right
+// edge (FR-10): each viewport row is normalized to exactly the content width
+// before the scrollbar cell is appended, so the bar sits flush against the
+// terminal's right edge and a dangling SGR from Markdown rendering can never
+// bleed into (and hide) the bar column. When everything fits there is nothing to
+// scroll, so no bar is drawn and the viewport uses the full width (relayout
+// releases the reserved column in that case).
 func (t transcript) view() string {
-	return lipgloss.JoinHorizontal(lipgloss.Top, t.vp.View(), t.scrollbar())
+	if !t.overflowing() {
+		return t.vp.View()
+	}
+
+	bar := strings.Split(t.scrollbar(), "\n")
+	body := strings.Split(t.vp.View(), "\n")
+
+	// Fit every body line to exactly t.width columns (ANSI-aware pad/truncate),
+	// terminating any open style so the bar cell renders on a clean slate.
+	fit := lipgloss.NewStyle().Width(t.width).MaxWidth(t.width)
+
+	var b strings.Builder
+	for i := 0; i < len(bar); i++ {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		line := ""
+		if i < len(body) {
+			line = body[i]
+		}
+		if t.width > 0 {
+			b.WriteString(fit.Render(line))
+		}
+		b.WriteString(bar[i])
+	}
+	return b.String()
 }
 
 // scrollbar renders the one-column vertical scrollbar the height of the
-// viewport. A proportional thumb (█) marks the visible window and its position
-// marks the scroll offset, so scrolling up through history moves the thumb; the
-// remaining rows draw a light-gray track (░). When the content fits (no
-// overflow) the thumb fills the full height. This is a shaded gutter, not the
-// thin │ rule that was removed earlier.
+// viewport. A proportional thumb marks the visible window and its position marks
+// the scroll offset, so scrolling up through history moves the thumb; the
+// remaining rows draw a thin groove (│). The thumb is drawn as a capsule like
+// the macOS system scrollbar: a lower-half block ▄ caps the top and an upper-half
+// block ▀ caps the bottom (their filled halves sit on the inner edges so the
+// outer ends taper to rounded), with the full block █ filling the body rows
+// between the caps. The thumb is never shorter than three rows, so the capsule
+// always shows a body between its two rounded caps rather than collapsing to a
+// flat blob. When the content fits (no overflow) the capsule fills the full
+// height.
 func (t transcript) scrollbar() string {
 	h := t.vp.Height()
 	if h <= 0 {
@@ -180,8 +263,14 @@ func (t transcript) scrollbar() string {
 	pos := 0
 	if total > h {
 		thumb = h * h / total
-		if thumb < 1 {
-			thumb = 1
+		// Keep the capsule shape (rounded cap + body + rounded cap) by never
+		// letting the thumb shrink below three rows; clamp down to the viewport
+		// height when it is shorter than that.
+		if thumb < 3 {
+			thumb = 3
+		}
+		if thumb > h {
+			thumb = h
 		}
 		maxOff := total - h
 		off := t.vp.YOffset()
@@ -197,10 +286,15 @@ func (t transcript) scrollbar() string {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		if i >= pos && i < pos+thumb {
+		switch {
+		case i < pos || i >= pos+thumb:
+			b.WriteString(t.theme.ScrollTrack.Render("│"))
+		case thumb >= 2 && i == pos:
+			b.WriteString(t.theme.ScrollThumb.Render("▄"))
+		case thumb >= 2 && i == pos+thumb-1:
+			b.WriteString(t.theme.ScrollThumb.Render("▀"))
+		default:
 			b.WriteString(t.theme.ScrollThumb.Render("█"))
-		} else {
-			b.WriteString(t.theme.ScrollTrack.Render("░"))
 		}
 	}
 	return b.String()
@@ -211,27 +305,49 @@ func (t transcript) scrollbar() string {
 // content: if the viewport was at the bottom, new content auto-scrolls
 // (GotoBottom); if the user had scrolled up, the offset is preserved so reading
 // history is not interrupted.
+//
+// Width is decided here rather than in setSize so it stays correct as a run
+// streams in new lines (which reach reflow via appendDelta/finalizeTurn, not
+// setSize): the blocks are first laid out at the full width, and only if that
+// overflows the viewport is one column handed back to the scrollbar and the
+// blocks re-laid at totalWidth-1. When the content fits, the transcript keeps
+// the full width and view() draws no bar.
 func (t *transcript) reflow() {
 	stick := t.vp.AtBottom()
 
+	t.width = t.totalWidth
+	t.vp.SetWidth(t.width)
+	t.vp.SetContent(t.renderAll())
+
+	// A narrower width never reduces the line count, so if the full-width layout
+	// already overflows it still overflows at totalWidth-1: reserve the scrollbar
+	// column and re-lay the blocks so the body never sits under the bar.
+	if t.totalWidth > 0 && t.vp.TotalLineCount() > t.vp.Height() {
+		t.width = t.totalWidth - 1
+		t.vp.SetWidth(t.width)
+		t.vp.SetContent(t.renderAll())
+	}
+
+	if stick {
+		t.vp.GotoBottom()
+	}
+}
+
+// renderAll joins every block, rendered to the current content width, into the
+// transcript body string. Consecutive turns are separated by a blank line before
+// a new user turn so requests read as visually distinct.
+func (t *transcript) renderAll() string {
 	var b strings.Builder
 	for i, blk := range t.blocks {
 		if i > 0 {
 			b.WriteByte('\n')
-			// Separate a new user turn from the previous turn with a blank line so
-			// consecutive requests are visually distinct.
 			if blk.role == roleUser {
 				b.WriteByte('\n')
 			}
 		}
 		b.WriteString(t.renderBlock(blk, i == t.activeAssistant))
 	}
-
-	t.vp.SetContent(b.String())
-
-	if stick {
-		t.vp.GotoBottom()
-	}
+	return b.String()
 }
 
 // renderBlock wraps a block's text to the content width and applies the role's

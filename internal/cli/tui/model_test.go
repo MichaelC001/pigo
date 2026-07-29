@@ -45,19 +45,19 @@ func TestModelViewShell(t *testing.T) {
 	}
 }
 
-// TestModelNewlineKeys verifies that Alt+Enter inserts a line break at the
+// TestModelNewlineKeys verifies that Shift+Enter inserts a line break at the
 // cursor and preserves the already-typed text, rather than submitting. Plain
-// Enter still submits, so it does not leave a newline in the buffer. Alt+Enter
-// is the sole newline key: it arrives ESC-prefixed and distinct from Enter in
-// every terminal, without needing any keyboard-protocol enhancement (which broke
-// CJK / IME input).
+// Enter still submits, so it does not leave a newline in the buffer. Shift+Enter
+// is the primary newline key (reported distinctly by terminals speaking the
+// Kitty disambiguate protocol, which Bubble Tea enables by default); Ctrl+J and
+// Alt+Enter are fallbacks for terminals that collapse Shift+Enter to a bare CR.
 func TestModelNewlineKeys(t *testing.T) {
 	var mm tea.Model = NewModel(Options{})
 	mm, _ = mm.Update(tea.WindowSizeMsg{Width: 60, Height: 10})
 	for _, r := range "abc" {
 		mm, _ = mm.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
-	mm, _ = mm.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt})
+	mm, _ = mm.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift})
 	for _, r := range "def" {
 		mm, _ = mm.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}

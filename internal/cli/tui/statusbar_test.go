@@ -27,13 +27,14 @@ func TestStatusBarRendersAllFields(t *testing.T) {
 	out := s.Render(width)
 
 	for _, want := range []string{
+		"pigo",          // app badge
 		"claude-opus",   // model
-		"think:high",    // thinking level
+		"high",          // thinking level
 		"~/project",     // cwd
 		"master",        // git branch
-		"*3",            // dirty marker
-		"+4",            // ahead marker
-		"ctx:42%",       // context usage
+		glyphDirty + "3", // dirty marker
+		glyphAhead + "4", // ahead marker
+		"42%",           // context usage
 		"running: Read", // task
 	} {
 		if !strings.Contains(out, want) {
@@ -62,7 +63,7 @@ func TestStatusBarHidesContextWhenUnknown(t *testing.T) {
 	s.SetTelemetry(telemetryEventView{util: 0.5, window: 0})
 
 	out := s.Render(120)
-	if strings.Contains(out, "ctx:") {
+	if strings.Contains(out, glyphCtx) {
 		t.Errorf("context segment should be hidden when window unknown; got %q", out)
 	}
 }
@@ -106,6 +107,29 @@ func TestStatusBarZeroWidthEmpty(t *testing.T) {
 	s := newTestStatusBar()
 	if out := s.Render(0); out != "" {
 		t.Errorf("zero width should render empty, got %q", out)
+	}
+}
+
+// TestStatusBarContextTokenCount checks the context segment shows a
+// comma-grouped token count with the percentage once telemetry reports tokens.
+func TestStatusBarContextTokenCount(t *testing.T) {
+	s := newTestStatusBar()
+	s.SetTelemetry(telemetryEventView{util: 0.46, window: 200000, tokens: 90866})
+
+	out := s.Render(200)
+	for _, want := range []string{glyphCtx, "90,866", "46%"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render missing %q; got %q", want, out)
+		}
+	}
+}
+
+func TestHumanizeInt(t *testing.T) {
+	cases := map[int]string{0: "0", 90866: "90,866", 1000: "1,000", 999: "999", 1234567: "1,234,567"}
+	for in, want := range cases {
+		if got := humanizeInt(in); got != want {
+			t.Errorf("humanizeInt(%d) = %q, want %q", in, got, want)
+		}
 	}
 }
 

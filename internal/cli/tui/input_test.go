@@ -54,16 +54,28 @@ func TestInputEmojiByRune(t *testing.T) {
 	}
 }
 
-// TestInputAltEnterNewline verifies Alt+Enter inserts a newline into the buffer
-// (the sole multi-line key) while plain runes fill each line.
-func TestInputAltEnterNewline(t *testing.T) {
-	in := newInput()
-	in, _ = in.Update(runeKey('你'))
-	in, _ = in.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt})
-	in, _ = in.Update(runeKey('好'))
-
-	if got := in.Value(); got != "你\n好" {
-		t.Fatalf("Value() = %q, want %q", got, "你\n好")
+// TestInputNewlineKeys verifies each newline binding — Shift+Enter (primary),
+// Ctrl+J and Alt+Enter (fallbacks) — inserts a newline into the buffer while
+// plain runes fill each line.
+func TestInputNewlineKeys(t *testing.T) {
+	cases := []struct {
+		name string
+		key  tea.KeyPressMsg
+	}{
+		{"shift+enter", tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}},
+		{"ctrl+j", tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl}},
+		{"alt+enter", tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := newInput()
+			in, _ = in.Update(runeKey('你'))
+			in, _ = in.Update(tc.key)
+			in, _ = in.Update(runeKey('好'))
+			if got := in.Value(); got != "你\n好" {
+				t.Fatalf("Value() = %q, want %q", got, "你\n好")
+			}
+		})
 	}
 }
 
@@ -76,6 +88,24 @@ func TestInputEnterIsNotNewline(t *testing.T) {
 	in, _ = in.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if got := in.Value(); got != "a" {
 		t.Fatalf("Value() = %q, want %q (Enter must not add a newline)", got, "a")
+	}
+}
+
+// TestInputNewlineRendersBothLines guards the viewport-offset regression: after
+// 你 + Shift+Enter + 好 the buffer is "你\n好", but the editor once rendered two
+// blank rows because a manual SetHeight left the textarea's viewport scrolled
+// past the first line. DynamicHeight now resets the scroll offset in the same
+// pass, so both runes must appear in the rendered View.
+func TestInputNewlineRendersBothLines(t *testing.T) {
+	in := newInput()
+	in.SetWidth(40)
+	in, _ = in.Update(runeKey('你'))
+	in, _ = in.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift})
+	in, _ = in.Update(runeKey('好'))
+
+	view := in.View()
+	if !strings.Contains(view, "你") || !strings.Contains(view, "好") {
+		t.Fatalf("rendered view missing content, want both 你 and 好:\n%s", view)
 	}
 }
 

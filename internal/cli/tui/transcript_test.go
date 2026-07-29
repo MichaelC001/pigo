@@ -116,31 +116,27 @@ func TestTranscriptCJKWrap(t *testing.T) {
 	}
 }
 
-// TestTranscriptScrollbar verifies the persistent scrollbar policy: the gutter
-// is always present. While the content fits, the thumb "█" fills the full height
-// (no track). Once the content overflows, a shorter thumb "█" appears alongside
-// the light-gray track "░", and never the thin rule "│".
+// TestTranscriptScrollbar verifies the scrollbar policy: the gutter is hidden
+// while the content fits (nothing to scroll) and appears only once the content
+// overflows. When overflowing, a rounded pill thumb (body "█" with half-block
+// caps "▄"/"▀") sits alongside the thin groove "│".
 func TestTranscriptScrollbar(t *testing.T) {
 	tr := newTranscript(DefaultTheme())
 	tr.setSize(20, 4) // 4 visible rows
 
-	// Two short lines fit in 4 rows: scrollbar present, thumb fills the column,
-	// no track and no rule.
+	// Two short lines fit in 4 rows: no scrollbar at all — no thumb, no groove.
 	tr.addUser("one")
 	tr.addUser("two")
 	if tr.overflowing() {
 		t.Fatal("transcript should not overflow while content fits")
 	}
 	fit := stripANSI(tr.view())
-	if !strings.Contains(fit, "█") {
-		t.Errorf("expected a full-height thumb █ while content fits; got:\n%q", fit)
-	}
-	if strings.Contains(fit, "░") {
-		t.Errorf("no track ░ expected while content fits (thumb fills column); got:\n%q", fit)
+	if strings.ContainsAny(fit, "█▄▀│") {
+		t.Errorf("expected no scrollbar glyphs while content fits; got:\n%q", fit)
 	}
 
-	// Enough lines to exceed 4 rows: now it overflows, thumb shrinks and track
-	// appears.
+	// Enough lines to exceed 4 rows: now it overflows, thumb shrinks and the
+	// groove appears.
 	for i := 0; i < 10; i++ {
 		tr.addUser("line")
 	}
@@ -148,13 +144,85 @@ func TestTranscriptScrollbar(t *testing.T) {
 		t.Fatal("transcript should overflow once content exceeds the viewport")
 	}
 	view := stripANSI(tr.view())
-	if !strings.Contains(view, "█") {
-		t.Errorf("expected a scrollbar thumb █ while overflowing; got:\n%q", view)
+	if !strings.Contains(view, "▄") || !strings.Contains(view, "▀") {
+		t.Errorf("expected a rounded pill thumb (▄ top, ▀ bottom) while overflowing; got:\n%q", view)
 	}
-	if !strings.Contains(view, "░") {
-		t.Errorf("expected a track ░ while overflowing; got:\n%q", view)
+	if !strings.Contains(view, "│") {
+		t.Errorf("expected a groove │ while overflowing; got:\n%q", view)
 	}
-	if strings.Contains(view, "│") {
-		t.Errorf("scrollbar must not draw a track line │; got:\n%q", view)
+	if strings.Contains(view, "░") {
+		t.Errorf("scrollbar no longer uses the shaded track ░; got:\n%q", view)
+	}
+}
+
+// TestTranscriptScrollToRow checks the click/drag mapping: pressing the top of
+// the gutter scrolls to the top, the bottom scrolls to the bottom, and it is a
+// no-op when the content fits.
+func TestTranscriptScrollToRow(t *testing.T) {
+	tr := newTranscript(DefaultTheme())
+	tr.setSize(20, 4)
+
+	// Content fits: dragging must not move a non-scrollable viewport.
+	tr.addUser("only line")
+	tr.scrollToRow(3)
+	if tr.vp.YOffset() != 0 {
+		t.Errorf("scrollToRow on non-overflowing viewport moved offset to %d, want 0", tr.vp.YOffset())
+	}
+
+	for i := 0; i < 20; i++ {
+		tr.addUser("line")
+	}
+	if !tr.overflowing() {
+		t.Fatal("expected overflow after filling the transcript")
+	}
+
+	tr.scrollToRow(0)
+	if !tr.vp.AtTop() {
+		t.Errorf("dragging to row 0 should scroll to the top; YOffset=%d", tr.vp.YOffset())
+	}
+
+	tr.scrollToRow(tr.viewportHeight() - 1)
+	if !tr.vp.AtBottom() {
+		t.Errorf("dragging to the last row should scroll to the bottom; YOffset=%d", tr.vp.YOffset())
+	}
+}
+
+// TestModelScrollbarDrag drives the model with mouse press/motion/release on the
+// scrollbar column and asserts the drag state toggles and the viewport scrolls.
+func TestModelScrollbarDrag(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 30, Height: 8})
+	for i := 0; i < 40; i++ {
+		m.transcript.addUser("line")
+	}
+	if !m.transcript.overflowing() {
+		t.Fatal("expected the transcript to overflow")
+	}
+
+	col := m.width - 1
+	// Press at the top of the gutter: drag begins and the view jumps to the top.
+	m = apply(t, m, tea.MouseClickMsg{X: col, Y: 0, Button: tea.MouseLeft})
+	if !m.draggingScrollbar {
+		t.Fatal("left press on the scrollbar column should start dragging")
+	}
+	if !m.transcript.vp.AtTop() {
+		t.Errorf("press at row 0 should scroll to top; YOffset=%d", m.transcript.vp.YOffset())
+	}
+
+	// Motion to the bottom row while held drags the thumb down.
+	m = apply(t, m, tea.MouseMotionMsg{X: col, Y: m.transcript.viewportHeight() - 1, Button: tea.MouseLeft})
+	if !m.transcript.vp.AtBottom() {
+		t.Errorf("motion to the last row while dragging should scroll to bottom; YOffset=%d", m.transcript.vp.YOffset())
+	}
+
+	// Release ends the drag.
+	m = apply(t, m, tea.MouseReleaseMsg{X: col, Y: 3, Button: tea.MouseLeft})
+	if m.draggingScrollbar {
+		t.Error("release should end the scrollbar drag")
+	}
+
+	// A press away from the gutter column must not start a drag.
+	m = apply(t, m, tea.MouseClickMsg{X: 0, Y: 0, Button: tea.MouseLeft})
+	if m.draggingScrollbar {
+		t.Error("press off the scrollbar column should not start dragging")
 	}
 }

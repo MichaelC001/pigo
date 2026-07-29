@@ -34,7 +34,7 @@ type Model struct {
 
 	// input is the multi-line prompt editor (#390). It wraps a bubbles textarea
 	// so CJK / emoji are edited by rune (no dropped-byte bug), Enter submits and
-	// Alt+Enter inserts a newline. It is blurred while a run is in flight.
+	// Shift+Enter inserts a newline. It is blurred while a run is in flight.
 	input input
 
 	// running is true while an agent run is draining through runCh. Input submit
@@ -103,6 +103,11 @@ type Model struct {
 	// lastToolCard points at the most recently started card; Ctrl+O toggles its
 	// expanded state and re-flows the transcript.
 	lastToolCard *toolCard
+
+	// draggingScrollbar is set while the left mouse button is held after pressing
+	// on the transcript scrollbar column, so subsequent motion events drag the
+	// thumb (and scroll the viewport) until the button is released.
+	draggingScrollbar bool
 }
 
 // NewModel builds the root model from the assembled Options. It reads the
@@ -202,6 +207,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.transcript.update(msg)
 		return m, cmd
 
+	case tea.MouseClickMsg:
+		// A left press on the scrollbar column (the transcript's rightmost cell)
+		// grabs the thumb: jump the viewport to that row and start dragging so the
+		// following motion events track the cursor. Presses elsewhere fall through
+		// untouched.
+		if msg.Button == tea.MouseLeft && m.onScrollbar(msg.X, msg.Y) {
+			m.draggingScrollbar = true
+			m.transcript.scrollToRow(msg.Y)
+			return m, nil
+		}
+		return m, nil
+
+	case tea.MouseMotionMsg:
+		// While the thumb is grabbed, vertical motion drags it regardless of the
+		// cursor's column — matching how a desktop scrollbar keeps tracking once you
+		// hold it.
+		if m.draggingScrollbar {
+			m.transcript.scrollToRow(msg.Y)
+		}
+		return m, nil
+
+	case tea.MouseReleaseMsg:
+		m.draggingScrollbar = false
+		return m, nil
+
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
@@ -244,6 +274,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusBar.SetTelemetry(telemetryEventView{
 			util:   msg.ev.ContextUtilization,
 			window: msg.ev.ContextWindow,
+			tokens: msg.ev.ContextTokens,
 		})
 		return m, m.pumpNext()
 
@@ -278,7 +309,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKey processes a key press. It resolves the keys the shell owns —
 // two-stage interrupt/quit, prompt submit, transcript scrolling — and delegates
-// everything else (character entry, in-buffer cursor movement, Alt+Enter
+// everything else (character entry, in-buffer cursor movement, Shift+Enter
 // newline) to the input editor while idle. Keys are matched via KeyPressMsg
 // .String() so the mapping is terminal-independent.
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -357,7 +388,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Everything else is editing input; gated on idle so keystrokes never corrupt
-	// an in-flight prompt. textarea handles CJK / emoji by rune and Alt+Enter as
+	// an in-flight prompt. textarea handles CJK / emoji by rune and Shift+Enter as
 	// a newline. After the buffer changes, refresh the autocomplete popup so it
 	// opens/filters/closes as the user types a "/name" prefix.
 	if !m.running {
@@ -535,12 +566,12 @@ func (m Model) View() tea.View {
 
 // relayout re-sizes the transcript to the rows left after reserving the status
 // bar (1 row), the current input editor height, and any open autocomplete popup.
-// It reserves one content column for the transcript scrollbar only while there
-// is history to scroll (the transcript overflows its viewport); when everything
-// fits, the transcript uses the full width and no column is held. It is called on
-// every resize and after any edit that changes the input height or menu row
-// count, so the transcript region always fills exactly the space above the
-// input/status chrome.
+// It hands the transcript the full width; the transcript itself spends one column
+// on the scrollbar only while its content overflows (see transcript.reflow), so a
+// short conversation uses the whole width and shows no bar, while a scrolling one
+// reserves the gutter — and that decision re-runs on every streamed line, not just
+// on resize. It is called on every resize and after any edit that changes the
+// input height or menu row count.
 func (m *Model) relayout() {
 	if m.width <= 0 || m.height <= 0 {
 		return
@@ -549,14 +580,22 @@ func (m *Model) relayout() {
 	if rows < 0 {
 		rows = 0
 	}
-	// Reserve one content column for the persistent scrollbar so the transcript
-	// body never shifts as history grows past a screen.
-	content := m.width - 1
-	if content < 0 {
-		content = 0
-	}
-	m.transcript.setSize(content, rows)
+	m.transcript.setSize(m.width, rows)
 	m.input.SetWidth(m.width)
+}
+
+// onScrollbar reports whether the terminal cell (x, y) is the transcript's
+// scrollbar: the rightmost column (relayout reserves m.width-1 for content, so
+// the bar sits at column m.width-1) within the transcript's visible rows, which
+// start at the top of the screen (row 0). It gates click-to-drag so presses in
+// the body or on other chrome are left alone. When the content fits there is no
+// bar (relayout reclaims the column), so it always returns false.
+func (m Model) onScrollbar(x, y int) bool {
+	if m.width <= 0 || !m.transcript.overflowing() {
+		return false
+	}
+	h := m.transcript.viewportHeight()
+	return x == m.width-1 && y >= 0 && y < h
 }
 
 // transcriptHeight returns the fallback number of rows for the transcript before

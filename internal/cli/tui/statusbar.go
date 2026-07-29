@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 
+	"charm.land/lipgloss/v2"
+
 	"github.com/smallnest/pigo/internal/cli/ui"
 )
 
@@ -36,6 +38,10 @@ type statusBar struct {
 	// the segment is hidden until the first telemetry arrives.
 	contextPct int
 
+	// tokens is the most recently observed context-token count (ContextTokens),
+	// shown alongside the percentage. 0 means unknown/not yet reported.
+	tokens int
+
 	// task is the current activity text (e.g. the running tool or turn state).
 	task string
 }
@@ -61,6 +67,7 @@ func (s *statusBar) SetGit(g gitInfoMsg) { s.git = g }
 func (s *statusBar) SetTelemetry(ev telemetryEventView) {
 	if ev.window <= 0 {
 		s.contextPct = -1
+		s.tokens = 0
 		return
 	}
 	pct := int(ev.util*100 + 0.5)
@@ -71,6 +78,9 @@ func (s *statusBar) SetTelemetry(ev telemetryEventView) {
 		pct = 100
 	}
 	s.contextPct = pct
+	if ev.tokens > 0 {
+		s.tokens = ev.tokens
+	}
 }
 
 // SetTask records the current activity text shown at the far right / high
@@ -83,50 +93,167 @@ func (s *statusBar) SetTask(task string) { s.task = task }
 type telemetryEventView struct {
 	util   float64
 	window int
+	tokens int
 }
 
-// segment is one labelled field of the bar together with its truncation
-// priority. Higher priority survives longer when the terminal is too narrow.
+// appName is the badge shown at the far left of the bar.
+const appName = "pigo"
+
+// Glyphs prefixing each segment plus the powerline separator, matching the
+// decorated Claude-Code-plugin look. The segment icons are common Unicode; the
+// separator (sepArrow) is a powerline glyph in the private-use area that Nerd
+// Fonts and most modern terminal fonts render. Each measures one display column
+// and ui.Width accounts for it during truncation.
+const (
+	glyphGit   = "⎇" // git branch
+	glyphDirty = "●" // uncommitted changes
+	glyphAhead = "⇡" // commits ahead of upstream
+	glyphModel = "✱" // model name
+	glyphThink = "✽" // thinking level
+	glyphCwd   = "▸" // working directory
+	glyphCtx   = "◔" // context-window usage
+	glyphTask  = "⏵" // current activity
+
+	sepArrow = "" // filled right arrow — used at a background transition
+)
+
+// Powerline palette (ANSI 256-color cube, so it renders without true-color).
+// Every segment is its own colored block. The arrow between two segments is
+// drawn in the LEFT block's background color so it reads as that item's color
+// spilling into the next; a closing arrow caps the final block back to the bar.
+const (
+	sbBarBg = "236" // bar background behind the trailing pad
+
+	sbAppFg = "233" // app badge text (dark, on light gray)
+	sbAppBg = "252" // app badge block (light gray)
+
+	sbGitFg = "231" // git text
+	sbGitBg = "65"  // git block (muted green)
+
+	sbModelFg = "231" // model text
+	sbModelBg = "97"  // model block (muted purple)
+
+	sbThinkFg = "231" // thinking text
+	sbThinkBg = "60"  // thinking block (slate)
+
+	sbCwdFg = "231" // cwd text
+	sbCwdBg = "67"  // cwd block (steel blue)
+
+	sbCtxFg = "236" // context text (dark, on amber)
+	sbCtxBg = "179" // context block (amber/gold)
+
+	sbTaskFg = "231" // task text
+	sbTaskBg = "131" // task block (muted terracotta)
+)
+
+// segment is one labelled field of the bar together with its colors and
+// truncation priority. bg == "" means the segment sits on the bar background;
+// a non-empty bg gives it a filled powerline block. Higher priority survives
+// longer when the terminal is too narrow.
 type segment struct {
 	text     string
-	priority int // larger = kept longer under truncation
+	fg       string
+	bg       string // "" => bar background
+	priority int    // larger = kept longer under truncation
 }
 
-// Priority order (SPEC: task > model > token > git > cwd). Higher is more
+// Priority order (SPEC: task > model/app > token > git > cwd). Higher is more
 // important and dropped/truncated last.
 const (
 	prioCwd   = 0
 	prioGit   = 1
 	prioToken = 2
 	prioModel = 3
+	prioApp   = 3 // the app badge rides at the model tier
 	prioTask  = 4
 )
 
-// Render lays the bar out to exactly the configured width. It joins the visible
-// segments with " · " separators and, when the result would exceed the width,
-// drops whole segments from lowest to highest priority, then truncates the
-// remaining joined string with TruncateToWidth as a final guard. The returned
-// string's display width (ui.Width) is always <= width. A non-positive width
-// yields the empty string.
+// Render lays the bar out to exactly the configured width as a colored powerline
+// ribbon. Each segment is a filled block joined to the next by an arrow drawn in
+// the left block's background color, and the tail is padded with the bar
+// background so the whole row is filled. When the ribbon would exceed the width
+// it drops whole segments from lowest to highest priority; if even the single
+// highest-priority segment still overflows it hard-truncates that segment's
+// text. The rendered row's display width (ui.Width, which ignores ANSI) is
+// always exactly width for width > 0; a non-positive width yields the empty
+// string.
 func (s statusBar) Render(width int) string {
 	if width <= 0 {
 		return ""
 	}
 
 	segs := s.segments()
-
-	// Drop lowest-priority segments until the joined content fits, so that under
-	// pressure we keep task > model > token > git > cwd.
 	for len(segs) > 0 {
-		joined := joinSegments(segs)
-		if ui.Width(joined) <= width {
-			return s.theme.StatusBar.Render(joined)
+		ribbon, w := renderRibbon(segs)
+		if w <= width {
+			return ribbon + barPad(width-w)
+		}
+		if len(segs) == 1 {
+			break
 		}
 		segs = dropLowest(segs)
 	}
 
-	// Even a single highest-priority segment overflows: hard-truncate it.
-	return s.theme.StatusBar.Render(TruncateToWidth(s.highestText(), width))
+	// Even a single highest-priority segment overflows: hard-truncate its text
+	// onto the bar background (no separators, so width stays bounded).
+	txt := TruncateToWidth(s.highestText(), width)
+	base := lipgloss.NewStyle().Foreground(lipgloss.Color(sbAppFg)).Background(lipgloss.Color(sbBarBg))
+	return base.Render(txt) + barPad(width-ui.Width(txt))
+}
+
+// renderRibbon builds the styled powerline string for segs and returns it with
+// its visible width (excluding ANSI). The left edge starts at the first
+// segment's background; a closing arrow caps any trailing block back to the bar.
+func renderRibbon(segs []segment) (string, int) {
+	resolve := func(bg string) string {
+		if bg == "" {
+			return sbBarBg
+		}
+		return bg
+	}
+
+	var b strings.Builder
+	vis := 0
+	for i, seg := range segs {
+		curBg := resolve(seg.bg)
+		if i > 0 {
+			// The separator arrow is filled with the LEFT block's background, so
+			// it matches the item it flows out of, sitting on the next block's bg.
+			leftBg := resolve(segs[i-1].bg)
+			b.WriteString(lipgloss.NewStyle().
+				Foreground(lipgloss.Color(leftBg)).
+				Background(lipgloss.Color(curBg)).
+				Render(sepArrow))
+			vis += ui.Width(sepArrow)
+		}
+		content := " " + seg.text + " "
+		b.WriteString(lipgloss.NewStyle().
+			Foreground(lipgloss.Color(seg.fg)).
+			Background(lipgloss.Color(curBg)).
+			Render(content))
+		vis += ui.Width(content)
+	}
+
+	// Cap a trailing colored block with an arrow back to the bar background.
+	if lastBg := resolve(segs[len(segs)-1].bg); lastBg != sbBarBg {
+		b.WriteString(lipgloss.NewStyle().
+			Foreground(lipgloss.Color(lastBg)).
+			Background(lipgloss.Color(sbBarBg)).
+			Render(sepArrow))
+		vis += ui.Width(sepArrow)
+	}
+	return b.String(), vis
+}
+
+// barPad returns n spaces painted with the bar background so the row fills the
+// full terminal width. n <= 0 yields the empty string.
+func barPad(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return lipgloss.NewStyle().
+		Background(lipgloss.Color(sbBarBg)).
+		Render(strings.Repeat(" ", n))
 }
 
 // segments builds the ordered list of visible segments. Order in the slice is
@@ -134,38 +261,71 @@ func (s statusBar) Render(width int) string {
 func (s statusBar) segments() []segment {
 	var segs []segment
 
+	// App badge leads the bar as a filled block.
+	segs = append(segs, segment{text: appName, fg: sbAppFg, bg: sbAppBg, priority: prioApp})
+
+	if s.git.ok {
+		segs = append(segs, segment{text: s.gitText(), fg: sbGitFg, bg: sbGitBg, priority: prioGit})
+	}
 	if s.model != "" {
-		segs = append(segs, segment{text: s.model, priority: prioModel})
+		segs = append(segs, segment{text: glyphModel + " " + s.model, fg: sbModelFg, bg: sbModelBg, priority: prioModel})
 	}
 	if s.thinking != "" {
 		// Thinking rides with the model priority — it is cheap and contextual.
-		segs = append(segs, segment{text: "think:" + s.thinking, priority: prioModel})
+		segs = append(segs, segment{text: glyphThink + " " + s.thinking, fg: sbThinkFg, bg: sbThinkBg, priority: prioModel})
 	}
 	if s.cwd != "" {
-		segs = append(segs, segment{text: s.cwd, priority: prioCwd})
-	}
-	if s.git.ok {
-		segs = append(segs, segment{text: s.gitText(), priority: prioGit})
+		segs = append(segs, segment{text: glyphCwd + " " + s.cwd, fg: sbCwdFg, bg: sbCwdBg, priority: prioCwd})
 	}
 	if s.contextPct >= 0 {
-		segs = append(segs, segment{text: fmt.Sprintf("ctx:%d%%", s.contextPct), priority: prioToken})
+		// The context readout is the highlighted amber block on the right.
+		segs = append(segs, segment{text: s.ctxText(), fg: sbCtxFg, bg: sbCtxBg, priority: prioToken})
 	}
 	if s.task != "" {
-		segs = append(segs, segment{text: s.task, priority: prioTask})
+		segs = append(segs, segment{text: glyphTask + " " + s.task, fg: sbTaskFg, bg: sbTaskBg, priority: prioTask})
 	}
 	return segs
 }
 
-// gitText formats the git segment, e.g. "master *3 +4": branch, then "*N" for N
-// dirty entries and "+N" for N commits ahead, each shown only when non-zero.
+// gitText formats the git segment, e.g. "⎇ master ●3 ⇡4": branch, then "●N" for
+// N dirty entries and "⇡N" for N commits ahead, each shown only when non-zero.
 func (s statusBar) gitText() string {
 	var b strings.Builder
-	b.WriteString(s.git.branch)
+	b.WriteString(glyphGit + " " + s.git.branch)
 	if s.git.dirty > 0 {
-		fmt.Fprintf(&b, " *%d", s.git.dirty)
+		fmt.Fprintf(&b, " %s%d", glyphDirty, s.git.dirty)
 	}
 	if s.git.ahead > 0 {
-		fmt.Fprintf(&b, " +%d", s.git.ahead)
+		fmt.Fprintf(&b, " %s%d", glyphAhead, s.git.ahead)
+	}
+	return b.String()
+}
+
+// ctxText formats the context segment, e.g. "◔ 90,866 (46%)" when the token
+// count is known, or "◔ 46%" before the first token count arrives.
+func (s statusBar) ctxText() string {
+	if s.tokens > 0 {
+		return fmt.Sprintf("%s %s (%d%%)", glyphCtx, humanizeInt(s.tokens), s.contextPct)
+	}
+	return fmt.Sprintf("%s %d%%", glyphCtx, s.contextPct)
+}
+
+// humanizeInt renders n with thousands separators, e.g. 90866 → "90,866".
+func humanizeInt(n int) string {
+	s := fmt.Sprintf("%d", n)
+	neg := strings.HasPrefix(s, "-")
+	if neg {
+		s = s[1:]
+	}
+	var b strings.Builder
+	for i, r := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(r)
+	}
+	if neg {
+		return "-" + b.String()
 	}
 	return b.String()
 }
@@ -184,15 +344,6 @@ func (s statusBar) highestText() string {
 		}
 	}
 	return best.text
-}
-
-// joinSegments renders the segments left-to-right joined by " · ".
-func joinSegments(segs []segment) string {
-	parts := make([]string, len(segs))
-	for i, seg := range segs {
-		parts[i] = seg.text
-	}
-	return strings.Join(parts, " · ")
 }
 
 // dropLowest removes one occurrence of the lowest-priority segment, preserving
