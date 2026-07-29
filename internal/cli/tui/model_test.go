@@ -137,13 +137,42 @@ func keyPress(s string) tea.KeyPressMsg {
 	}
 }
 
-// TestModelPasteInsertsIntoInput verifies a bracketed paste (tea.PasteMsg) is
-// routed into the editor and inserted whole, including embedded newlines.
-func TestModelPasteInsertsIntoInput(t *testing.T) {
+// TestModelPasteSingleLineInsertsVerbatim verifies a single-line bracketed paste
+// is inserted into the editor as-is (no placeholder collapsing).
+func TestModelPasteSingleLineInsertsVerbatim(t *testing.T) {
 	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 40, Height: 12})
-	m = apply(t, m, tea.PasteMsg{Content: "hello\nworld"})
-	if got := m.input.Value(); got != "hello\nworld" {
-		t.Errorf("input after paste = %q, want %q", got, "hello\nworld")
+	m = apply(t, m, tea.PasteMsg{Content: "hello world"})
+	if got := m.input.Value(); got != "hello world" {
+		t.Errorf("input after paste = %q, want %q", got, "hello world")
+	}
+}
+
+// TestModelPasteMultilineCollapses verifies a multi-line paste is collapsed to a
+// compact "[Pasted text #N +M lines]" placeholder in the composer (Claude Code
+// style) while the full body is stashed and expanded back at submit.
+func TestModelPasteMultilineCollapses(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 40, Height: 12})
+	m = apply(t, m, tea.PasteMsg{Content: "line1\nline2\nline3"})
+
+	if got, want := m.input.Value(), "[Pasted text #1 +3 lines]"; got != want {
+		t.Errorf("composer showed %q, want placeholder %q", got, want)
+	}
+	if got := m.expandPastes(m.input.Value()); got != "line1\nline2\nline3" {
+		t.Errorf("expandPastes = %q, want the original body", got)
+	}
+}
+
+// TestModelExpandPastesMultiple verifies several collapsed pastes each expand
+// back to their own body, and an unknown id is left untouched.
+func TestModelExpandPastesMultiple(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 40, Height: 12})
+	m = apply(t, m, tea.PasteMsg{Content: "aaa\nbbb"})
+	m = apply(t, m, tea.PasteMsg{Content: "ccc\nddd"})
+
+	got := m.expandPastes("x [Pasted text #1 +2 lines] y [Pasted text #2 +2 lines] [Pasted text #9 +9 lines]")
+	want := "x aaa\nbbb y ccc\nddd [Pasted text #9 +9 lines]"
+	if got != want {
+		t.Errorf("expandPastes = %q, want %q", got, want)
 	}
 }
 

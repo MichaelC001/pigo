@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"fmt"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -119,6 +122,15 @@ type Model struct {
 	// spinner is the animated "working" indicator (verb + elapsed/token/effort
 	// stats) shown on the row above the input while a run is in flight.
 	spinner spinner
+
+	// pastes stores the full text of collapsed multi-line pastes, keyed by the id
+	// shown in the "[Pasted text #N +M lines]" placeholder left in the composer.
+	// submit expands the placeholders back to their content before sending, so a
+	// large paste never floods the editor (mirroring Claude Code).
+	pastes map[int]string
+	// pasteSeq is the monotonic counter behind the paste placeholder ids. It keeps
+	// climbing across submits so ids stay unique for the session.
+	pasteSeq int
 }
 
 // NewModel builds the root model from the assembled Options. It reads the
@@ -155,6 +167,7 @@ func NewModel(opts Options) Model {
 		live:       live,
 		menu:       newSlashMenu(theme),
 		spinner:    newSpinner(theme),
+		pastes:     make(map[int]string),
 	}
 }
 
@@ -258,20 +271,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.PasteMsg:
 		// Bracketed paste (e.g. Cmd+V / right-click paste): the terminal delivers
-		// the whole clipboard payload as one message. Route it to the editor so it
-		// is inserted whole (textarea splits embedded newlines correctly), then
-		// re-lay out since a multi-line paste can grow the editor and refresh the
-		// slash menu in case the paste starts a "/name".
+		// the whole clipboard payload as one message. A multi-line paste is
+		// collapsed to a compact placeholder (expanded at submit); a single-line
+		// paste is inserted verbatim. See handlePaste.
 		if !m.running {
-			return m.feedInput(msg)
+			return m.handlePaste(msg.Content)
 		}
 		return m, nil
 
 	case tea.ClipboardMsg:
-		// OSC52 clipboard read reply (from tea.ReadClipboard on Ctrl+V). Insert it
-		// via the same paste path as bracketed paste.
+		// OSC52 clipboard read reply (from tea.ReadClipboard on Ctrl+V / Cmd+V).
+		// Route through the same collapse-or-insert path as bracketed paste.
 		if !m.running {
-			return m.feedInput(tea.PasteMsg{Content: msg.Content})
+			return m.handlePaste(msg.Content)
 		}
 		return m, nil
 
@@ -517,10 +529,13 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // and a system note without launching anything, and leaves the editor ready for
 // the next line.
 func (m Model) submit() (tea.Model, tea.Cmd) {
-	prompt := strings.TrimSpace(m.input.Value())
+	prompt := strings.TrimSpace(m.expandPastes(m.input.Value()))
 	if prompt == "" {
 		return m, nil
 	}
+	// The placeholders have been expanded into the prompt, so the stored paste
+	// bodies are consumed; drop them (the id counter keeps climbing).
+	m.pastes = make(map[int]string)
 	// A "/name ..." line is a slash-command invocation, not a prompt: resolve it
 	// against the shared registry (same as the REPL) rather than sending it to the
 	// agent verbatim.
@@ -650,6 +665,54 @@ func (m Model) feedInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.menu.refresh(m.input.Value(), m.slash)
 	m.relayout()
 	return m, cmd
+}
+
+// pastePlaceholderRe matches the "[Pasted text #N +M lines]" tokens handlePaste
+// leaves in the composer, capturing the id so expandPastes can swap the stored
+// body back in at submit.
+var pastePlaceholderRe = regexp.MustCompile(`\[Pasted text #(\d+) \+\d+ lines\]`)
+
+// handlePaste inserts a pasted payload into the editor. A multi-line paste is
+// collapsed to a compact "[Pasted text #N +M lines]" placeholder (the full body
+// stashed in m.pastes for expansion at submit), so a large paste does not flood
+// the composer — mirroring Claude Code. A single-line paste is inserted verbatim.
+func (m Model) handlePaste(content string) (tea.Model, tea.Cmd) {
+	if content == "" {
+		return m, nil
+	}
+	if strings.Contains(content, "\n") {
+		if m.pastes == nil {
+			m.pastes = make(map[int]string)
+		}
+		m.pasteSeq++
+		id := m.pasteSeq
+		m.pastes[id] = content
+		lines := strings.Count(content, "\n") + 1
+		placeholder := fmt.Sprintf("[Pasted text #%d +%d lines]", id, lines)
+		return m.feedInput(tea.PasteMsg{Content: placeholder})
+	}
+	return m.feedInput(tea.PasteMsg{Content: content})
+}
+
+// expandPastes replaces every paste placeholder in s with its stored body, so
+// the submitted prompt carries the real pasted text rather than the compact
+// token the user saw in the composer. An unknown id (e.g. the user edited the
+// token) is left as-is. It returns s unchanged when no pastes are stashed.
+func (m Model) expandPastes(s string) string {
+	if len(m.pastes) == 0 {
+		return s
+	}
+	return pastePlaceholderRe.ReplaceAllStringFunc(s, func(tok string) string {
+		sm := pastePlaceholderRe.FindStringSubmatch(tok)
+		id, err := strconv.Atoi(sm[1])
+		if err != nil {
+			return tok
+		}
+		if body, ok := m.pastes[id]; ok {
+			return body
+		}
+		return tok
+	})
 }
 
 // pumpNext re-issues waitForEvent for the in-flight run so the next bridged msg
