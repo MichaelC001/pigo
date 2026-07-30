@@ -1,0 +1,45 @@
+# Pigo global configuration (example template)
+# Copy this file to ~/.config/pigo/config.toml and fill in your own values.
+# https://github.com/smallnest/pigo
+
+# Provider base URL (overrides the provider's default endpoint).
+# Leave unset to use the selected provider's built-in default.
+# base_url = "https://api.anthropic.com/v1"
+
+# Default model to use.
+model = "claude-opus-4-8"
+
+# API key for authentication.
+# Prefer supplying this via the <PROVIDER>_API_KEY environment variable
+# (e.g. ANTHROPIC_API_KEY) instead of committing it to a config file.
+# api_key = "your-api-key-here"
+
+# Output format: text | stream-json
+output_format = "text"
+
+# Trust the working directory for this run: skip the first-launch trust prompt.
+approve = false
+
+# Disable the built-in file/shell tools.
+no_tools = false
+
+# Disable skill discovery (do not load skills under ~/.agents/skills as /skill-name commands).
+no_skills = false
+
+# Force wire protocol for a custom endpoint: openai | anthropic
+# protocol = "anthropic"
+
+# Run in headless print mode with the given prompt.
+# print = ""
+
+# Resume the most recent interactive session.
+# continue = false
+
+# List stored interactive sessions and exit.
+# list_sessions = false
+
+# Resume the interactive session with this id.
+# resume = ""
+
+# Internal: run as a process-isolated sub-agent JSON-RPC server over stdio (US-019).
+# subagent_rpc = false
