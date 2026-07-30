@@ -148,14 +148,16 @@ func (c toolCard) primaryArg() string {
 	if len(c.input) == 0 {
 		return ""
 	}
-	var key string
+	var keyPrefs []string
 	switch strings.ToLower(c.name) {
 	case "bash":
-		key = "command"
+		keyPrefs = []string{"command"}
 	case "read", "write", "edit", "multiedit":
-		key = "file_path"
+		// The file tools emit "path"; accept "file_path" as a fallback for
+		// callers that use the Claude-style key.
+		keyPrefs = []string{"path", "file_path"}
 	}
-	if key != "" {
+	for _, key := range keyPrefs {
 		if v, ok := c.input[key]; ok {
 			return fmt.Sprintf("%v", v)
 		}

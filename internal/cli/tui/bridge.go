@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -70,15 +71,36 @@ func newStreamHandler(ch chan tea.Msg, extra func(agentcore.AgentEvent)) runtime
 	}
 }
 
-// argsToMap coerces a tool call's untyped Args into a map[string]any when it is a
-// JSON object, returning nil otherwise. The event layer carries Args as an
-// untyped any (the decoded JSON arguments), so a consumer that wants structured
-// input gets the object form when available and nil for non-object args.
+// argsToMap coerces a tool call's untyped Args into a map[string]any. The event
+// layer carries Args as an untyped any: the tool executor emits it as a
+// json.RawMessage (the raw decoded JSON arguments), but a caller may also hand
+// an already-decoded map. Both are supported here so the tool card can show the
+// call's arguments; anything that is not a JSON object yields nil.
 func argsToMap(args any) map[string]any {
-	if m, ok := args.(map[string]any); ok {
-		return m
+	switch v := args.(type) {
+	case map[string]any:
+		return v
+	case json.RawMessage:
+		return unmarshalArgsMap(v)
+	case []byte:
+		return unmarshalArgsMap(v)
+	case string:
+		return unmarshalArgsMap([]byte(v))
 	}
 	return nil
+}
+
+// unmarshalArgsMap parses JSON object bytes into a map, returning nil for empty
+// input or anything that is not a JSON object.
+func unmarshalArgsMap(b []byte) map[string]any {
+	if len(b) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil
+	}
+	return m
 }
 
 // pump runs the agent loop to completion on the calling goroutine, converting

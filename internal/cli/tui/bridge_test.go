@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -126,6 +127,16 @@ func TestArgsToMap(t *testing.T) {
 	}
 	if m := argsToMap(nil); m != nil {
 		t.Errorf("nil args: got %#v, want nil", m)
+	}
+	// The tool executor emits Args as json.RawMessage; the card must decode it.
+	if m := argsToMap(json.RawMessage(`{"command":"ls -la"}`)); m == nil || m["command"] != "ls -la" {
+		t.Errorf("raw JSON object args: got %#v, want map with command=ls -la", m)
+	}
+	if m := argsToMap(json.RawMessage(`"just a string"`)); m != nil {
+		t.Errorf("raw JSON non-object: got %#v, want nil", m)
+	}
+	if m := argsToMap(json.RawMessage(nil)); m != nil {
+		t.Errorf("empty raw JSON: got %#v, want nil", m)
 	}
 }
 
