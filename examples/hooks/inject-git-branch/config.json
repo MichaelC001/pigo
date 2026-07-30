@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "$PIGO_PROJECT_DIR/examples/hooks/inject-git-branch/hook.sh" }
+        ]
+      }
+    ]
+  }
+}
