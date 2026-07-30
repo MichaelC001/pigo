@@ -62,6 +62,12 @@ func newStatusBar(theme Theme, opts Options, cwd string) statusBar {
 // SetGit stores the latest git probe result.
 func (s *statusBar) SetGit(g gitInfoMsg) { s.git = g }
 
+// SetModel updates the displayed model name after a /model switch.
+func (s *statusBar) SetModel(model string) { s.model = model }
+
+// SetThinking updates the displayed reasoning-effort level after a /think switch.
+func (s *statusBar) SetThinking(level string) { s.thinking = level }
+
 // SetTelemetry updates the context-usage percentage from a telemetry event.
 // A zero/unknown window (ContextWindow == 0) leaves the segment hidden.
 func (s *statusBar) SetTelemetry(ev telemetryEventView) {

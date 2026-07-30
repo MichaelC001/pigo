@@ -619,6 +619,12 @@ func (m Model) runSlash(line string) (tea.Model, tea.Cmd) {
 	if outcome.Message != "" {
 		m.transcript.addSystem(outcome.Message)
 	}
+	// A live-state command (/model, /think) may have mutated m.live; sync the
+	// status bar so the model/thinking segments reflect the switch immediately.
+	if m.live != nil {
+		m.statusBar.SetModel(m.live.Model)
+		m.statusBar.SetThinking(string(m.live.ThinkingLevel))
+	}
 	// An action command is complete once its status is shown; a hybrid with no
 	// prompt (notifications only) likewise starts no run.
 	if outcome.Kind == runtime.SlashAction || outcome.Prompt == "" {
