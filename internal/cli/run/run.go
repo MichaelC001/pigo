@@ -50,9 +50,11 @@ type Env struct {
 // the default base instruction (对标 pi 的 --system-prompt); appendSystemPrompt
 // entries are each resolved (a path to an existing file is read, otherwise the
 // value is literal text) and layered onto the end of the prompt (对标 pi 的
-// --append-system-prompt). It returns an error rather than exiting so the caller
-// owns exit-code mapping.
-func SetupEnv(model, baseURL, protocol, providerName string, noTools, noSkills bool, systemPrompt string, appendSystemPrompt []string) (Env, error) {
+// --append-system-prompt). apiKey is the resolved credential (CLI --api-key or
+// config.toml) used as the override for sub-agent credential resolution so
+// dispatched task children authenticate the same way the parent does. It
+// returns an error rather than exiting so the caller owns exit-code mapping.
+func SetupEnv(model, baseURL, protocol, providerName, apiKey string, noTools, noSkills bool, systemPrompt string, appendSystemPrompt []string) (Env, error) {
 	cwd, _ := os.Getwd()
 	prov, resolvedName, err := provider.ResolveProvider(model, baseURL, protocol, providerName, os.Getenv)
 	if err != nil {
@@ -70,7 +72,12 @@ func SetupEnv(model, baseURL, protocol, providerName string, noTools, noSkills b
 	// again), and all task calls in a run share one semaphore capping concurrency.
 	if !noTools {
 		sem := runtime.NewSubagentSemaphore()
-		childCreds := provider.NewCredentialStore(nil) // env-resolved, like the subagent RPC child
+		// The child resolves credentials the same way the parent does: env/OAuth via
+		// a fresh store, plus the CLI/config api key as an override. Without the
+		// override a child would get an empty key whenever auth comes from config.toml
+		// or --api-key (not an env var), leaving every sub-agent unauthenticated.
+		childCreds := provider.NewCredentialStore(nil)
+		childCreds.SetOverride(resolvedName, apiKey)
 		factory := func() runtime.RunConfig {
 			childTools := BuiltinToolsExcept(cwd, false, "task")
 			return runtime.RunConfig{

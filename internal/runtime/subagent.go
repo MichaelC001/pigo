@@ -271,15 +271,26 @@ func (t *SubAgentTool) executeGoroutine(ctx context.Context, id, prompt, descrip
 			return agentcore.AgentToolResult{}, ctx.Err()
 		}
 	}
+	runCfg := t.spec.NewRunConfig()
+	// Advertise the child's tools to the model. A spec may pin an explicit set
+	// (spec.Tools); otherwise fall back to the run config's registry — the tools
+	// the executor can actually run — so a factory that wires only the registry
+	// (like the generic task tool) still tells the child what it can call.
+	// Without this the model is handed an empty tool list, can only reply with
+	// text, and a delegated task that needs tools comes back empty.
+	tools := t.spec.Tools
+	if len(tools) == 0 && runCfg.Batch.ToolExecutorConfig.Registry != nil {
+		tools = runCfg.Batch.ToolExecutorConfig.Registry.List()
+	}
 	childCtx := &agentcore.AgentContext{
 		SystemPrompt: t.spec.SystemPrompt,
 		Messages: agentcore.MessageList{
 			agentcore.UserMessage{RoleField: agentcore.RoleUser, Content: agentcore.ContentList{agentcore.NewTextContent(prompt)}},
 		},
-		Tools: t.spec.Tools,
+		Tools: tools,
 	}
 
-	stream := StartRun(ctx, childCtx, t.spec.NewRunConfig())
+	stream := StartRun(ctx, childCtx, runCfg)
 	// Drain events (DrainStream never returns early, so the producer goroutine is
 	// never blocked on back-pressure); forward streamed child text as
 	// tool-execution updates when a sink is set.

@@ -192,3 +192,42 @@ func TestTaskSemaphoreBoundsConcurrency(t *testing.T) {
 		t.Error("no child ever ran; the semaphore blocked everything")
 	}
 }
+
+// TestTaskAdvertisesRegistryTools verifies the child sub-agent is told about the
+// tools it can actually run: when the spec pins no explicit tool set, the child
+// context's Tools are populated from the run config's registry. Without this the
+// model receives an empty tool list and cannot do real work (the "non-functional
+// sub-agent" bug), so this guards the wiring, not just the result.
+func TestTaskAdvertisesRegistryTools(t *testing.T) {
+	// Capture the tools the provider is handed for the child request.
+	var gotTools []agentcore.AgentTool
+	capturing := provider.StreamFn(func(ctx context.Context, model string, llm provider.LlmContext, cfg provider.StreamConfig) (*provider.AssistantMessageEventStream, error) {
+		gotTools = llm.Tools
+		child := &fauxProvider{
+			name:   "faux-child",
+			models: []provider.Model{{Provider: "faux-child", ID: "child"}},
+			turns:  []fauxTurn{textTurn("done")},
+		}
+		return provider.StreamFnFromProvider(child)(ctx, model, llm, cfg)
+	})
+	reg := agenttool.NewToolRegistry()
+	_ = reg.Register(echoTool("read", agentcore.ToolExecutionParallel, false))
+	_ = reg.Register(echoTool("bash", agentcore.ToolExecutionParallel, false))
+	factory := func() RunConfig {
+		return RunConfig{
+			LoopConfig: LoopConfig{Model: "child", Stream: capturing},
+			Batch:      agenttool.BatchConfig{ToolExecutorConfig: agenttool.ToolExecutorConfig{Registry: reg}},
+		}
+	}
+	tool := NewTaskTool(factory, nil)
+	if _, err := tool.Execute(context.Background(), "id", json.RawMessage(`{"prompt":"go"}`), nil); err != nil {
+		t.Fatalf("Execute err = %v", err)
+	}
+	if len(gotTools) != 2 {
+		t.Fatalf("child was advertised %d tools, want 2 (from the registry)", len(gotTools))
+	}
+	names := map[string]bool{gotTools[0].Name(): true, gotTools[1].Name(): true}
+	if !names["read"] || !names["bash"] {
+		t.Errorf("child tools = %v, want read+bash from the registry", names)
+	}
+}

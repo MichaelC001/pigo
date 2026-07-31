@@ -134,3 +134,159 @@ func TestSubagentPanelViewBlankDescription(t *testing.T) {
 		t.Errorf("view = %q, blank desc should not leave a leading ' · '", line)
 	}
 }
+
+// TestSubagentPanelSelection verifies the cursor navigation: a fresh panel has no
+// selection, the first ↓ lands on the top row and the first ↑ on the bottom row,
+// movement clamps at both ends, and clearSelection resets to no-cursor state.
+func TestSubagentPanelSelection(t *testing.T) {
+	now := time.Now()
+	var p subagentPanel
+	p.add("a", "task A", now)
+	p.add("b", "task B", now)
+	p.add("c", "task C", now)
+
+	if p.hasSelection() {
+		t.Fatal("fresh panel should have no selection")
+	}
+
+	// First ↓ selects the top row; further ↓ advance and clamp at the bottom.
+	p.selectDown()
+	if !p.hasSelection() || p.selected != 0 {
+		t.Fatalf("after first down: hasSelection=%v selected=%d, want true/0", p.hasSelection(), p.selected)
+	}
+	p.selectDown()
+	p.selectDown()
+	p.selectDown() // clamp
+	if p.selected != 2 {
+		t.Errorf("selected after clamp down = %d, want 2", p.selected)
+	}
+
+	// ↑ retreats and clamps at the top.
+	p.selectUp()
+	if p.selected != 1 {
+		t.Errorf("selected after up = %d, want 1", p.selected)
+	}
+	p.selectUp()
+	p.selectUp() // clamp
+	if p.selected != 0 {
+		t.Errorf("selected after clamp up = %d, want 0", p.selected)
+	}
+
+	p.clearSelection()
+	if p.hasSelection() {
+		t.Error("clearSelection should drop the cursor")
+	}
+
+	// From no selection, the first ↑ lands on the bottom row.
+	p.selectUp()
+	if !p.hasSelection() || p.selected != 2 {
+		t.Errorf("first up from none: selected=%d, want 2", p.selected)
+	}
+}
+
+// TestSubagentPanelExpandView verifies that expanding a selected row appends its
+// accumulated output below the status line, that the cursor marker is present,
+// that lineCount matches the rendered height, and that collapsing removes the
+// extra lines.
+func TestSubagentPanelExpandView(t *testing.T) {
+	now := time.Now()
+	var p subagentPanel
+	p.add("a", "task A", now)
+	p.add("b", "task B", now)
+	p.appendOutput("b", "hello from B\nsecond line")
+
+	p.selectDown() // selects "a"
+	p.selectDown() // selects "b"
+	if id := p.expandedID(); id != "" {
+		t.Errorf("expandedID before toggle = %q, want empty", id)
+	}
+	p.toggleExpand()
+	if id := p.expandedID(); id != "b" {
+		t.Errorf("expandedID after toggle = %q, want b", id)
+	}
+
+	const width = 80
+	view := p.view(DefaultTheme(), width, now)
+	lines := strings.Split(view, "\n")
+	if got := p.lineCount(width); got != len(lines) {
+		t.Errorf("lineCount = %d, rendered %d lines", got, len(lines))
+	}
+	// Two status rows + two output lines.
+	if len(lines) != 4 {
+		t.Fatalf("expanded view has %d lines, want 4: %q", len(lines), view)
+	}
+	if !strings.Contains(view, "❯") {
+		t.Errorf("expanded view missing selection cursor: %q", view)
+	}
+	if !strings.Contains(view, "hello from B") || !strings.Contains(view, "second line") {
+		t.Errorf("expanded view missing output: %q", view)
+	}
+
+	// Collapsing reclaims the output lines.
+	p.toggleExpand()
+	if got := p.lineCount(width); got != 2 {
+		t.Errorf("lineCount after collapse = %d, want 2", got)
+	}
+}
+
+// TestSubagentPanelExpandTruncates verifies the inline output is wrapped and
+// tail-capped: every rendered line fits the width and no more than
+// maxExpandedLines output lines are shown.
+func TestSubagentPanelExpandTruncates(t *testing.T) {
+	now := time.Now()
+	var p subagentPanel
+	p.add("a", "task A", now)
+	// Many short lines exceed the cap; one very long line must wrap.
+	p.appendOutput("a", strings.Repeat("x\n", 40))
+	p.appendOutput("a", strings.Repeat("y", 500))
+	p.selectDown()
+	p.toggleExpand()
+
+	const width = 40
+	view := p.view(DefaultTheme(), width, now)
+	lines := strings.Split(view, "\n")
+	for _, line := range lines {
+		if w := ui.Width(line); w > width {
+			t.Errorf("line width = %d, want <= %d: %q", w, width, line)
+		}
+	}
+	// 1 status row + at most maxExpandedLines output lines.
+	if len(lines) > 1+maxExpandedLines {
+		t.Errorf("expanded view has %d lines, want <= %d", len(lines), 1+maxExpandedLines)
+	}
+}
+
+// TestSubagentPanelRemoveClampsSelection verifies that removing rows keeps the
+// selection valid: removing the selected bottom row clamps the cursor to the new
+// last row, and removing the final row clears the selection entirely.
+func TestSubagentPanelRemoveClampsSelection(t *testing.T) {
+	now := time.Now()
+	var p subagentPanel
+	p.add("a", "task A", now)
+	p.add("b", "task B", now)
+	p.selectDown()
+	p.selectDown() // selects "b" (index 1)
+
+	p.remove("b")
+	if !p.hasSelection() || p.selected != 0 {
+		t.Errorf("after remove(b): hasSelection=%v selected=%d, want true/0", p.hasSelection(), p.selected)
+	}
+
+	p.remove("a")
+	if p.hasSelection() {
+		t.Error("removing the last row should clear the selection")
+	}
+	if got := p.lineCount(80); got != 0 {
+		t.Errorf("empty panel lineCount = %d, want 0", got)
+	}
+}
+
+// TestSubagentPanelAppendOutputUnknown verifies deltas for an unknown id are
+// dropped (no phantom row, no panic).
+func TestSubagentPanelAppendOutputUnknown(t *testing.T) {
+	var p subagentPanel
+	p.appendOutput("ghost", "data") // must not panic or add a row
+	if p.active() != 0 {
+		t.Errorf("active after appendOutput to unknown id = %d, want 0", p.active())
+	}
+}

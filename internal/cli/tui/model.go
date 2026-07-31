@@ -42,6 +42,16 @@ type Model struct {
 	// Shift+Enter inserts a newline. It is blurred while a run is in flight.
 	input input
 
+	// history holds previously submitted inputs (prompts and slash commands, in
+	// order), and histIdx is the browse cursor into it: len(history) means "not
+	// browsing — on the live draft", any smaller index points at a recalled entry.
+	// histDraft stashes the in-progress buffer when browsing begins so ↓ past the
+	// newest entry restores it. ↑/↓ walk history when the caret is on the first /
+	// last line of the composer, so multi-line editing is unaffected.
+	history   []string
+	histIdx   int
+	histDraft string
+
 	// running is true while an agent run is draining through runCh. Input submit
 	// is gated on it so a new run cannot start mid-run.
 	running bool
@@ -355,6 +365,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.pumpNext()
 
 	case toolUpdateMsg:
+		// A `task` sub-agent forwards its text as incremental tool-update deltas;
+		// accumulate them onto the matching panel row so the expanded view can show
+		// the running output. appendOutput is a no-op for non-task ids (nothing to
+		// attach to), so ordinary tool updates are unaffected. Relayout only when the
+		// delta lands on the currently expanded row, whose growing output changes the
+		// panel height; other rows' output is buffered without touching the layout.
+		m.subagents.appendOutput(msg.id, msg.partial)
+		if m.subagents.expandedID() == msg.id {
+			m.relayout()
+		}
 		return m, m.pumpNext()
 
 	case subagentProgressMsg:
@@ -460,6 +480,39 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "enter":
 			return m.submitSlashSelected()
+		}
+	}
+
+	// While a sub-agent run is streaming, the composer is disabled (no typing until
+	// the run ends), so ↑/↓ drive a selection cursor over the live sub-agent status
+	// rows and Enter expands the selected row to show its accumulated output inline.
+	// Esc is the one-key escape back to the composer: with a row selected it drops
+	// the selection AND re-focuses the input box in a single press, so arrowing into
+	// the panel is never a trap. With no selection Esc falls through to its
+	// two-stage interrupt role below. The Value()=="" guard is a safety net for the
+	// rare case where text reached the buffer (e.g. a paste): then arrows edit the
+	// buffer rather than the panel.
+	if m.running && m.subagents.active() > 0 && m.input.Value() == "" {
+		switch msg.String() {
+		case "up":
+			m.subagents.selectUp()
+			m.relayout()
+			return m, nil
+		case "down":
+			m.subagents.selectDown()
+			m.relayout()
+			return m, nil
+		case "enter":
+			m.subagents.toggleExpand()
+			m.relayout()
+			return m, nil
+		case "esc":
+			if m.subagents.hasSelection() {
+				m.subagents.clearSelection()
+				focus := m.input.Focus()
+				m.relayout()
+				return m, focus
+			}
 		}
 	}
 
@@ -571,6 +624,15 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// a newline. After the buffer changes, refresh the autocomplete popup so it
 	// opens/filters/closes as the user types a "/name" prefix.
 	if !m.running {
+		// ↑/↓ walk the submitted-prompt history when the caret is at the top / bottom
+		// edge of the composer; otherwise they move the caret within a multi-line
+		// draft (handled by the textarea below).
+		switch msg.String() {
+		case "up":
+			return m.historyPrev(msg)
+		case "down":
+			return m.historyNext(msg)
+		}
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		m.menu.refresh(m.input.Value(), m.slash)
@@ -586,10 +648,13 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // and a system note without launching anything, and leaves the editor ready for
 // the next line.
 func (m Model) submit() (tea.Model, tea.Cmd) {
+	raw := strings.TrimSpace(m.input.Value())
 	prompt := strings.TrimSpace(m.expandImages(m.expandPastes(m.input.Value())))
 	if prompt == "" {
 		return m, nil
 	}
+	// Record the input (as typed) into the browse history, then exit browse mode.
+	m.recordHistory(raw)
 	// The placeholders have been expanded into the prompt, so the stored paste
 	// bodies and image paths are consumed; drop them (the id counters keep climbing).
 	m.pastes = make(map[int]string)
@@ -627,6 +692,7 @@ func (m Model) submitSlashSelected() (tea.Model, tea.Cmd) {
 	if c, ok := m.menu.current(); ok {
 		line = "/" + c.Name
 	}
+	m.recordHistory(line)
 	return m.runSlash(line)
 }
 
@@ -665,6 +731,66 @@ func (m Model) runSlash(line string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m.startPrompt(outcome.Prompt)
+}
+
+// recordHistory appends an submitted input to the browse history (skipping a
+// consecutive duplicate, like a shell) and resets the browse cursor to the live
+// draft, so the next ↑ starts from the most recent entry and any stashed draft is
+// dropped. A blank entry is never stored.
+func (m *Model) recordHistory(entry string) {
+	entry = strings.TrimSpace(entry)
+	if entry != "" && (len(m.history) == 0 || m.history[len(m.history)-1] != entry) {
+		m.history = append(m.history, entry)
+	}
+	m.histIdx = len(m.history)
+	m.histDraft = ""
+}
+
+// historyPrev recalls the previous submitted input into the composer, but only
+// when the caret is on the first line — otherwise ↑ moves the caret within a
+// multi-line draft. The first recall stashes the live draft so historyNext can
+// restore it, and the cursor lands past the newest entry (len(history)) initially.
+func (m Model) historyPrev(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if len(m.history) == 0 || m.input.Line() != 0 {
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(msg)
+		m.menu.refresh(m.input.Value(), m.slash)
+		m.relayout()
+		return m, cmd
+	}
+	if m.histIdx == len(m.history) {
+		m.histDraft = m.input.Value()
+	}
+	if m.histIdx > 0 {
+		m.histIdx--
+	}
+	m.input.SetValue(m.history[m.histIdx])
+	m.menu.refresh(m.input.Value(), m.slash)
+	m.relayout()
+	return m, nil
+}
+
+// historyNext walks forward toward more recent inputs — restoring the stashed
+// draft once it steps past the newest entry — but only while browsing and with
+// the caret on the last line; otherwise ↓ moves the caret within a multi-line
+// draft.
+func (m Model) historyNext(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.histIdx >= len(m.history) || m.input.Line() != m.input.LineCount()-1 {
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(msg)
+		m.menu.refresh(m.input.Value(), m.slash)
+		m.relayout()
+		return m, cmd
+	}
+	m.histIdx++
+	if m.histIdx == len(m.history) {
+		m.input.SetValue(m.histDraft)
+	} else {
+		m.input.SetValue(m.history[m.histIdx])
+	}
+	m.menu.refresh(m.input.Value(), m.slash)
+	m.relayout()
+	return m, nil
 }
 
 // startPrompt launches an agent run for prompt, blurring the editor and flipping
@@ -999,9 +1125,10 @@ func (m *Model) relayout() {
 	rows := m.height - 1 - m.input.Height() - m.menu.rows()
 	if m.running {
 		rows-- // the working spinner occupies the row just above the input
-		// Each live sub-agent adds one status-panel row above the spinner; an empty
-		// panel reserves nothing so the single-run layout is unchanged.
-		rows -= m.subagents.active()
+		// The sub-agent panel reserves one status row per live sub-agent, plus the
+		// wrapped output lines of the expanded row (if any); an empty panel reserves
+		// nothing so the single-run layout is unchanged.
+		rows -= m.subagents.lineCount(m.width)
 	}
 	if rows < 0 {
 		rows = 0

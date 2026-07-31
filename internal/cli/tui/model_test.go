@@ -341,3 +341,157 @@ func TestModelSubagentPanelHeightReservation(t *testing.T) {
 		t.Errorf("newline count = %d, want 19 (20 rows)", got)
 	}
 }
+
+// TestModelSubagentPanelNavigation verifies that while a run streams and the
+// composer is empty, ↓/↑ move the panel cursor, Enter expands the selected row's
+// accumulated output inline (fed by tool-update deltas), and Esc collapses/clears
+// the selection rather than interrupting the run.
+func TestModelSubagentPanelNavigation(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 80, Height: 24})
+	m.running = true
+	m.spinner.begin(time.Now(), "")
+	m = apply(t, m, toolStartMsg{id: "a", name: "task", input: map[string]any{"description": "task A"}})
+	m = apply(t, m, toolStartMsg{id: "b", name: "task", input: map[string]any{"description": "task B"}})
+	// A sub-agent's forwarded text arrives as an incremental tool-update delta.
+	m = apply(t, m, toolUpdateMsg{id: "b", partial: "output of B"})
+
+	// ↓ selects the top row, a second ↓ moves to row b.
+	m = apply(t, m, tea.KeyPressMsg{Code: tea.KeyDown})
+	if !m.subagents.hasSelection() || m.subagents.selected != 0 {
+		t.Fatalf("after down: selected=%d hasSel=%v, want 0/true", m.subagents.selected, m.subagents.hasSelection())
+	}
+	m = apply(t, m, tea.KeyPressMsg{Code: tea.KeyDown})
+
+	// Enter expands the selected row; its accumulated output shows in the render.
+	m = apply(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if got := m.subagents.expandedID(); got != "b" {
+		t.Fatalf("expandedID after enter = %q, want b", got)
+	}
+	if !strings.Contains(m.renderContent(), "output of B") {
+		t.Errorf("expanded render missing sub-agent output:\n%s", m.renderContent())
+	}
+
+	// Esc collapses/clears the selection and does NOT quit (no quit command).
+	next, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m = next.(Model)
+	if m.subagents.hasSelection() {
+		t.Error("esc should clear the panel selection")
+	}
+	if cmd != nil {
+		if _, isQuit := cmd().(tea.QuitMsg); isQuit {
+			t.Error("esc with an active selection should not quit the program")
+		}
+	}
+}
+
+// TestModelSubagentEscReturnsToInput verifies the one-key escape ("脱困:一键回输入框"):
+// while a sub-agent runs the composer is blurred (no typing), and after arrowing
+// into the panel a single Esc both clears the selection and re-focuses the input
+// box — so returning to the composer never requires more than one press and never
+// interrupts the run.
+func TestModelSubagentEscReturnsToInput(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 80, Height: 24})
+	m.running = true
+	m.spinner.begin(time.Now(), "")
+	m.input.Blur() // the composer is blurred for the duration of a run (startPrompt)
+	m = apply(t, m, toolStartMsg{id: "a", name: "task", input: map[string]any{"description": "task A"}})
+
+	// Arrow into the panel: a selection is now active while the input stays blurred.
+	m = apply(t, m, tea.KeyPressMsg{Code: tea.KeyDown})
+	if !m.subagents.hasSelection() {
+		t.Fatal("down should select a sub-agent row")
+	}
+	if m.input.Focused() {
+		t.Fatal("the composer should be blurred while a sub-agent run streams")
+	}
+
+	// One Esc escapes: selection cleared AND the input box re-focused, in a single
+	// press, without interrupting the run.
+	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m = next.(Model)
+	if m.subagents.hasSelection() {
+		t.Error("one Esc should clear the panel selection")
+	}
+	if !m.input.Focused() {
+		t.Error("one Esc should re-focus the input box (return to the composer)")
+	}
+	if !m.running {
+		t.Error("escaping the panel selection must not interrupt the run")
+	}
+}
+
+// TestModelPromptHistoryNavigation verifies shell-like prompt history: after
+// submitting two prompts, ↑ from an empty composer recalls the most recent, a
+// second ↑ walks further back, ↓ walks forward again, and a final ↓ restores the
+// (empty) live draft. With no run starter wired, submit records history and
+// leaves the composer idle/focused, so the arrow keys route to historyPrev /
+// historyNext.
+func TestModelPromptHistoryNavigation(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 80, Height: 12})
+
+	submit := func(s string) {
+		for _, r := range s {
+			m = apply(t, m, runeKey(r))
+		}
+		m = apply(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	}
+	submit("first prompt")
+	submit("second prompt")
+
+	if m.input.Value() != "" {
+		t.Fatalf("composer should be empty after submit, got %q", m.input.Value())
+	}
+
+	// ↑ recalls the newest entry, a second ↑ the older one.
+	m = apply(t, m, tea.KeyPressMsg{Code: tea.KeyUp})
+	if got := m.input.Value(); got != "second prompt" {
+		t.Errorf("first ↑ recalled %q, want %q", got, "second prompt")
+	}
+	m = apply(t, m, tea.KeyPressMsg{Code: tea.KeyUp})
+	if got := m.input.Value(); got != "first prompt" {
+		t.Errorf("second ↑ recalled %q, want %q", got, "first prompt")
+	}
+
+	// ↓ walks forward to the newer entry, then past it to restore the live draft.
+	m = apply(t, m, tea.KeyPressMsg{Code: tea.KeyDown})
+	if got := m.input.Value(); got != "second prompt" {
+		t.Errorf("↓ walked to %q, want %q", got, "second prompt")
+	}
+	m = apply(t, m, tea.KeyPressMsg{Code: tea.KeyDown})
+	if got := m.input.Value(); got != "" {
+		t.Errorf("↓ past newest should restore the empty draft, got %q", got)
+	}
+}
+
+// TestModelPromptHistoryDedupsAndStashesDraft verifies two shell-like behaviors:
+// a consecutive-duplicate submit is not stored twice, and an in-progress draft is
+// stashed when browsing begins so ↓ past the newest entry brings it back.
+func TestModelPromptHistoryDedupsAndStashesDraft(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 80, Height: 12})
+
+	submit := func(s string) {
+		for _, r := range s {
+			m = apply(t, m, runeKey(r))
+		}
+		m = apply(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	}
+	submit("same")
+	submit("same") // consecutive duplicate — must not be stored twice
+	if len(m.history) != 1 {
+		t.Fatalf("history = %v, want a single deduped entry", m.history)
+	}
+
+	// Type a fresh draft, then browse: ↑ stashes the draft and recalls history,
+	// ↓ past the newest entry restores the stashed draft verbatim.
+	for _, r := range "draft" {
+		m = apply(t, m, runeKey(r))
+	}
+	m = apply(t, m, tea.KeyPressMsg{Code: tea.KeyUp})
+	if got := m.input.Value(); got != "same" {
+		t.Errorf("↑ recalled %q, want %q", got, "same")
+	}
+	m = apply(t, m, tea.KeyPressMsg{Code: tea.KeyDown})
+	if got := m.input.Value(); got != "draft" {
+		t.Errorf("↓ should restore the stashed draft %q, got %q", "draft", got)
+	}
+}

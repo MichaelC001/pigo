@@ -135,6 +135,13 @@ func (in *input) Blur() { in.ta.Blur() }
 // Focused reports whether the editor currently accepts input.
 func (in input) Focused() bool { return in.ta.Focused() }
 
+// Line reports the zero-based index of the line the cursor is on, and LineCount
+// the total number of lines in the buffer. The model uses them to decide whether
+// ↑/↓ should walk the prompt history (caret on the first / last line) or move the
+// caret within a multi-line draft.
+func (in input) Line() int      { return in.ta.Line() }
+func (in input) LineCount() int { return in.ta.LineCount() }
+
 // SetWidth resizes the editor to the terminal width so wrapping and the prompt
 // column line up with the rest of the shell.
 func (in *input) SetWidth(w int) {
