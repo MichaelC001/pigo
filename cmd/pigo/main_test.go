@@ -8,10 +8,13 @@ package main
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/smallnest/pigo/internal/cli/config"
+	"github.com/smallnest/pigo/internal/cli/run"
 )
 
 // --- dispatch seam ---
@@ -98,6 +101,39 @@ func TestDispatchTUIGating(t *testing.T) {
 				t.Errorf("shouldUseTUI(%+v, %v) = %v, want %v", tt.opts, tt.isTTY, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestCwdChdirRootsEnv verifies the guarantee --cwd relies on: after the
+// process working directory is switched (what the --cwd flag does via os.Chdir),
+// run.SetupEnv roots the run — and thus the built-in file tools — at that
+// directory. This is the contract that lets pigo be pointed at an arbitrary
+// project root as an SDK backend. It exercises the downstream effect rather than
+// re-parsing flags, since the chdir itself lives in main().
+func TestCwdChdirRootsEnv(t *testing.T) {
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	// macOS temp dirs are symlinks (/tmp → /private/tmp); os.Getwd resolves them,
+	// so compare against the resolved form.
+	want, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+
+	env, err := run.SetupEnv("openrouter/free", "", "", "", true /*noTools*/, true /*noSkills*/, "", nil)
+	if err != nil {
+		t.Fatalf("SetupEnv: %v", err)
+	}
+	if env.Cwd != want {
+		t.Errorf("env.Cwd = %q, want %q (the chdir'd directory)", env.Cwd, want)
 	}
 }
 

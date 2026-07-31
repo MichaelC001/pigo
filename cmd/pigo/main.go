@@ -105,6 +105,14 @@ type cliOptions struct {
 	// When set — or when stdout is not a TTY — the no-prompt path falls back to
 	// repl.Run rather than launching tui.Run.
 	noTUI bool
+	// cwd, when non-empty, is the working directory pigo switches to before doing
+	// anything else (对标 Claude Agent SDK 的 cwd option / git -C). Every
+	// cwd-derived resolution — built-in tool file roots, project trust, hooks
+	// project dir, .pigo/ project config, git info, the status-bar path — reads
+	// os.Getwd(), so a single os.Chdir here makes all of them operate in the
+	// given directory. This is what makes pigo usable as an SDK backend that can
+	// be pointed at an arbitrary project root.
+	cwd string
 }
 
 func main() {
@@ -136,6 +144,7 @@ func main() {
 	flag.StringVar(&opts.thinkingLevel, "thinking-level", "", "reasoning effort: off|minimal|low|medium|high|xhigh (overrides PIGO_THINKING_LEVEL and config; default medium)")
 	flag.BoolVar(&opts.subagentRPC, "subagent-rpc", false, "internal: run as a process-isolated sub-agent JSON-RPC server over stdio (US-019)")
 	flag.BoolVar(&opts.noTUI, "no-tui", false, "使用行式 REPL 而非全屏 TUI")
+	flag.StringVarP(&opts.cwd, "cwd", "C", "", "run as if pigo was started in this directory (对标 Claude Agent SDK 的 cwd; like git -C): tool file access, trust, hooks, and project config all resolve against it")
 	flag.BoolVarP(&opts.showVersion, "version", "v", false, "print version information and exit")
 	// Extend the default pflag usage with a "Supported providers" block so
 	// `--help` documents the values accepted by --provider (name → env var →
@@ -148,6 +157,19 @@ func main() {
 		cli.PrintProviderHelp(out)
 	}
 	flag.Parse()
+
+	// --cwd switches the process working directory before anything cwd-derived is
+	// resolved (tool roots, trust, hooks, project config, git info). Doing it here
+	// — after parse, before config overlay and dispatch — means every downstream
+	// os.Getwd() sees the requested directory, so pigo behaves as if it had been
+	// launched there. A bad path is a usage error (exit 2) rather than a silent
+	// fall-through to the original directory.
+	if opts.cwd != "" {
+		if err := os.Chdir(opts.cwd); err != nil {
+			fmt.Fprintf(os.Stderr, "pigo: --cwd: %v\n", err)
+			os.Exit(2)
+		}
+	}
 
 	// Overlay ~/.config/pigo/config.toml: file values replace built-in defaults,
 	// but any flag the user set on the command line still wins (CLI > file >
