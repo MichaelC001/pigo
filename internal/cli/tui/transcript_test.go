@@ -58,7 +58,8 @@ func TestTranscriptStreamingConcat(t *testing.T) {
 
 // TestTranscriptAutoStick verifies the stick-to-bottom rule: while the viewport
 // is at the bottom, new content keeps it pinned there; once the user scrolls up,
-// new content no longer forces a jump to the bottom.
+// streamed content no longer forces a jump to the bottom — but submitting a new
+// turn (addUser) re-arms follow and snaps back to the newest output.
 func TestTranscriptAutoStick(t *testing.T) {
 	tr := newTranscript(DefaultTheme())
 	tr.setSize(20, 3) // 3 visible rows
@@ -82,10 +83,18 @@ func TestTranscriptAutoStick(t *testing.T) {
 		t.Fatal("scrolling up should move the viewport off the bottom")
 	}
 
-	// Content arriving while scrolled up must NOT yank the view back to bottom.
-	tr.addUser("streamed while reading history")
+	// Streamed content arriving while scrolled up must NOT yank the view back to
+	// the bottom — the user is reading history.
+	tr.appendDelta("streamed while reading history\nsecond line\nthird line")
 	if tr.vp.AtBottom() {
 		t.Error("auto-stick should stay paused after the user scrolls up")
+	}
+
+	// Submitting a new turn is an explicit action: it re-arms follow and snaps
+	// back to the newest output so the reply is never left off-screen.
+	tr.addUser("a brand new prompt")
+	if !tr.vp.AtBottom() {
+		t.Error("submitting a new turn should re-arm auto-scroll to the bottom")
 	}
 }
 

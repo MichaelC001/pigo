@@ -68,6 +68,15 @@ type transcript struct {
 
 	blocks          []transcriptBlock
 	activeAssistant int
+
+	// follow is the stick-to-bottom intent: while true, every reflow snaps the
+	// viewport to the newest line so streamed output stays visible. It is set
+	// when the user submits a turn and cleared when they scroll up to read
+	// history (re-armed when they scroll back to the bottom). Tracking intent
+	// explicitly — rather than sampling viewport.AtBottom() inside reflow — keeps
+	// auto-scroll correct across height changes (setSize resizes the viewport
+	// before reflow runs, which would make an AtBottom() sample read false).
+	follow bool
 }
 
 // newTranscript builds an empty transcript with the given theme. The viewport
@@ -98,10 +107,16 @@ func (t *transcript) setSize(width, height int) {
 }
 
 // addUser appends a user turn and closes any streaming assistant block, then
-// re-flows (sticking to the bottom when already there).
+// re-flows. Submitting a prompt is an explicit action where the user always
+// wants to see their new turn and the response that follows, so it re-arms
+// follow: the viewport snaps to the bottom even if the user had scrolled up
+// (e.g. reading the startup banner) — otherwise the streamed reply would
+// accumulate off-screen and look like nothing happened. Subsequent streaming
+// deltas keep the bottom via follow, which the user can pause by scrolling up.
 func (t *transcript) addUser(text string) {
 	t.blocks = append(t.blocks, transcriptBlock{role: roleUser, text: text})
 	t.activeAssistant = -1
+	t.follow = true
 	t.reflow()
 }
 
@@ -158,12 +173,12 @@ func (t *transcript) finalizeTurn(msg agentcore.AssistantMessage) {
 }
 
 // update forwards a message (typically a key press or scroll) to the viewport so
-// PgUp/PgDn/arrow scrolling works. Auto-stick is decided per content change in
-// reflow, so a user scroll-up here naturally pauses it until they return to the
-// bottom.
+// PgUp/PgDn/arrow scrolling works, then re-syncs the follow intent: scrolling up
+// off the bottom pauses auto-scroll, and scrolling back to the bottom re-arms it.
 func (t *transcript) update(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	t.vp, cmd = t.vp.Update(msg)
+	t.follow = t.vp.AtBottom()
 	return cmd
 }
 
@@ -203,6 +218,7 @@ func (t *transcript) scrollToRow(y int) {
 	}
 	maxOff := total - h
 	t.vp.SetYOffset(top * maxOff / span)
+	t.follow = t.vp.AtBottom()
 }
 
 // viewportHeight reports the number of visible transcript rows, so the model can
@@ -313,10 +329,11 @@ func (t transcript) scrollbar() string {
 }
 
 // reflow re-renders every block to the current width and pushes the joined
-// content into the viewport. It captures the bottom-stick state before mutating
-// content: if the viewport was at the bottom, new content auto-scrolls
-// (GotoBottom); if the user had scrolled up, the offset is preserved so reading
-// history is not interrupted.
+// content into the viewport. When the follow intent is set it snaps to the
+// bottom so new content auto-scrolls; otherwise the offset is preserved so
+// reading history is not interrupted. follow is tracked in update/scrollToRow
+// (user scroll) and addUser (new turn) rather than sampled here, because setSize
+// resizes the viewport before reflow runs and an AtBottom() sample would misread.
 //
 // Width is decided here rather than in setSize so it stays correct as a run
 // streams in new lines (which reach reflow via appendDelta/finalizeTurn, not
@@ -325,8 +342,6 @@ func (t transcript) scrollbar() string {
 // blocks re-laid at totalWidth-1. When the content fits, the transcript keeps
 // the full width and view() draws no bar.
 func (t *transcript) reflow() {
-	stick := t.vp.AtBottom()
-
 	t.width = t.totalWidth
 	t.vp.SetWidth(t.width)
 	t.vp.SetContent(t.renderAll())
@@ -340,7 +355,7 @@ func (t *transcript) reflow() {
 		t.vp.SetContent(t.renderAll())
 	}
 
-	if stick {
+	if t.follow {
 		t.vp.GotoBottom()
 	}
 }
