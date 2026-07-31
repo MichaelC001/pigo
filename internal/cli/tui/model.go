@@ -367,6 +367,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.pumpNext()
 
 	case compactionMsg:
+		if m.session != nil {
+			m.session.compacted = true
+		}
 		m.transcript.addSystem("（上下文已压缩）")
 		return m, m.pumpNext()
 

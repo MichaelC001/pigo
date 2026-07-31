@@ -64,6 +64,13 @@ type runSession struct {
 	curLeaf   string
 	persisted int
 
+	// compacted is set when the run loop compacted the context (CompactionEvent):
+	// compaction rewrites Messages into a summary + recent tail, which both shrinks
+	// the slice below persisted (so an incremental Messages[persisted:] would panic)
+	// and invalidates the branch prefix. persist() honors this by re-saving the
+	// flattened context linearly and resetting the branch cursor, then clears it.
+	compacted bool
+
 	// cancelRun cancels the in-flight run's context; startRun sets it and the
 	// two-stage interrupt (Model.interruptFn → interrupt) calls it. It is nil
 	// before the first run and after a run is cancelled.
@@ -292,6 +299,26 @@ func (s *runSession) interrupt() {
 // than a linear rewrite) keeps history intact. A no-op when nothing new was
 // produced, so an idle turn-end never regenerates entry ids.
 func (s *runSession) persist() error {
+	// A compaction during the run rewrote Messages into a summary + recent tail,
+	// so the append-a-tail branch model no longer holds: the prefix changed and
+	// the slice may be shorter than persisted. Re-save the flattened context
+	// linearly and reset the branch cursor to the new leaf, mirroring the REPL's
+	// /compact handling.
+	if s.compacted || s.persisted > len(s.agentCtx.Messages) {
+		s.header.UpdatedAt = time.Now().UTC()
+		s.header.Model = s.live.Model
+		s.header.Provider = s.live.ProviderName
+		if err := s.store.Save(s.header, s.agentCtx.Messages); err != nil {
+			return err
+		}
+		s.persisted = len(s.agentCtx.Messages)
+		s.curLeaf = ""
+		if _, entries, err := s.store.LoadEntries(s.header.ID); err == nil && len(entries) > 0 {
+			s.curLeaf = entries[len(entries)-1].ID
+		}
+		s.compacted = false
+		return nil
+	}
 	tail := s.agentCtx.Messages[s.persisted:]
 	if len(tail) == 0 {
 		return nil

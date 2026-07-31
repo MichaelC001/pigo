@@ -155,3 +155,56 @@ func TestFreshSessionPersists(t *testing.T) {
 		t.Errorf("curLeaf changed on no-op persist: %q -> %q", before, s.curLeaf)
 	}
 }
+
+// TestPersistAfterCompaction reproduces the crash where an automatic compaction
+// shrinks agentCtx.Messages below the persisted cursor: an incremental
+// Messages[persisted:] would panic with a slice-bounds error. persist() must
+// instead re-save the flattened context and reset the cursor to the new length.
+func TestPersistAfterCompaction(t *testing.T) {
+	store := newTestStore(t)
+	s, _, err := newRunSessionWithStore(store, Options{Model: "m", ProviderName: "p"})
+	if err != nil {
+		t.Fatalf("newRunSessionWithStore: %v", err)
+	}
+
+	// Persist a few turns so the cursor advances past what compaction will keep.
+	for i := 0; i < 4; i++ {
+		s.agentCtx.Messages = append(s.agentCtx.Messages,
+			agentcore.UserMessage{RoleField: agentcore.RoleUser, Content: agentcore.ContentList{agentcore.NewTextContent("q")}},
+			agentcore.AssistantMessage{RoleField: agentcore.RoleAssistant, Content: agentcore.ContentList{agentcore.NewTextContent("a")}},
+		)
+	}
+	if err := s.persist(); err != nil {
+		t.Fatalf("persist: %v", err)
+	}
+	if s.persisted != 8 {
+		t.Fatalf("persisted = %d, want 8 before compaction", s.persisted)
+	}
+
+	// Simulate the run loop compacting: Messages is rewritten to a shorter
+	// summary + tail (here just a 2-message tail), and the loop signalled it via
+	// compactionMsg (which sets s.compacted).
+	s.agentCtx.Messages = agentcore.MessageList{
+		agentcore.UserMessage{RoleField: agentcore.RoleUser, Content: agentcore.ContentList{agentcore.NewTextContent("recent q")}},
+		agentcore.AssistantMessage{RoleField: agentcore.RoleAssistant, Content: agentcore.ContentList{agentcore.NewTextContent("recent a")}},
+	}
+	s.compacted = true
+
+	if err := s.persist(); err != nil {
+		t.Fatalf("persist after compaction: %v", err)
+	}
+	if s.compacted {
+		t.Error("compacted flag should be cleared after persist")
+	}
+	if s.persisted != 2 {
+		t.Errorf("persisted = %d, want 2 (the compacted length)", s.persisted)
+	}
+
+	_, msgs, err := store.Load(s.header.ID)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("persisted messages = %d, want 2 (flattened compacted context)", len(msgs))
+	}
+}
