@@ -74,3 +74,9 @@ type compactionMsg struct{}
 // runEndMsg is the final message: the run has fully drained. err is non-nil when
 // the run ended in error (or was interrupted).
 type runEndMsg struct{ err error }
+
+// remoteInputMsg carries a prompt submitted from the paired remote browser
+// (remote-control, #443). The listener Cmd (Model.waitRemoteInput) blocks on the
+// bridge's RemoteInput channel and emits one per submission, re-issued after each
+// so successive remote prompts keep arriving.
+type remoteInputMsg struct{ text string }

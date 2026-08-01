@@ -345,6 +345,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case textDeltaMsg:
 		m.spinner.addTokens(msg.delta)
 		m.transcript.appendDelta(msg.delta)
+		m.remoteEcho(msg.delta)
 		return m, m.pumpNext()
 
 	case turnEndMsg:
@@ -358,6 +359,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.toolCards[msg.id] = card
 		m.lastToolCard = card
 		m.transcript.addToolCard(card)
+		m.remoteEcho("\n· " + msg.name + "\n")
 		// A `task` tool call dispatches a sub-agent: open a status-panel row keyed by
 		// the tool-call id (matching the later progress/end events) and record its
 		// start so elapsed can be shown live (SPEC 4.4).
@@ -471,6 +473,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// typed, and re-probe git since a run may have changed the working tree.
 		focus := m.input.Focus()
 		return m, tea.Batch(focus, fetchGitCmd(m.cwd))
+
+	case remoteInputMsg:
+		// A prompt arrived from the paired browser (remote-control). Always re-issue
+		// the listener so successive remote prompts keep arriving. While a run is in
+		// flight the prompt is refused with a note (mirroring the local single-run
+		// gate); when idle it is echoed as a user block and run — as a slash command
+		// if it starts with "/", else a normal prompt.
+		text := strings.TrimSpace(msg.text)
+		if m.running || text == "" {
+			if m.running && text != "" {
+				m.transcript.addSystem("(remote input ignored: a run is in progress)")
+				m.relayout()
+			}
+			return m, m.waitRemoteInput()
+		}
+		var cmd tea.Cmd
+		var next tea.Model = m
+		if strings.HasPrefix(text, "/") {
+			next, cmd = m.runSlash(text)
+		} else {
+			m.transcript.addUser(text)
+			m.remoteEcho("\n> " + text + "\n")
+			m.relayout()
+			next, cmd = m.startPrompt(text)
+		}
+		m = next.(Model)
+		return m, tea.Batch(cmd, m.waitRemoteInput())
 	}
 	return m, nil
 }
@@ -589,6 +618,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// Ctrl+D quits only when idle; mid-run it is ignored so a run is never
 		// dropped by a stray EOF key.
 		if !m.running {
+			m.shutdownRemote()
 			m.quitting = true
 			return m, tea.Quit
 		}
@@ -690,6 +720,7 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 		return m.runSlash(prompt)
 	}
 	m.transcript.addUser(prompt)
+	m.remoteEcho("\n> " + prompt + "\n")
 	m.input.Clear()
 	m.menu.close()
 	m.relayout()
@@ -731,6 +762,7 @@ func (m Model) runSlash(line string) (tea.Model, tea.Cmd) {
 	// them before slash resolution. They register only as no-op /help builtins, so
 	// without this the registry would resolve them to an empty action.
 	if line == "/exit" || line == "/quit" {
+		m.shutdownRemote()
 		m.quitting = true
 		return m, tea.Quit
 	}
@@ -778,6 +810,12 @@ func (m Model) runSlash(line string) (tea.Model, tea.Cmd) {
 		m.running = true
 		m.relayout()
 		return m, tea.Batch(m.session.rebuildCmd(), m.tickSpinner())
+	}
+	// /remote-control is intercepted before registry resolution (like /rebuild):
+	// it starts/stops the LAN mirror server, which owns state (server, bridge,
+	// listener Cmd) a string→string slash Action cannot hold.
+	if line == "/remote-control" || strings.HasPrefix(line, "/remote-control ") {
+		return m.runRemoteControl(line)
 	}
 	m.transcript.addUser(line)
 	m.input.Clear()
@@ -929,8 +967,18 @@ func (m Model) interruptOrQuit() (tea.Model, tea.Cmd) {
 		m.transcript.addSystem("(interrupting the current run…)")
 		return m, nil
 	}
+	m.shutdownRemote()
 	m.quitting = true
 	return m, tea.Quit
+}
+
+// shutdownRemote stops the remote-control server on quit so the listener and
+// WebSocket are released cleanly. A no-op when remote control is off or no
+// session is bound.
+func (m Model) shutdownRemote() {
+	if m.session != nil {
+		m.session.stopRemote()
+	}
 }
 
 // feedInput forwards a message (a paste payload) to the editor, then refreshes

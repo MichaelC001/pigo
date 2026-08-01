@@ -114,6 +114,34 @@ func TestPairSetsCookieAndServesSPA(t *testing.T) {
 	}
 }
 
+// The session cookie must be SameSite=Lax so mobile browsers keep it across the
+// QR-scan /pair→/ redirect (Strict is dropped by some, breaking pairing).
+func TestPairCookieIsSameSiteLax(t *testing.T) {
+	_, pairURL := startTestServer(t, nil)
+	client := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse // stop at the 302 to read Set-Cookie
+		},
+	}
+	resp, err := client.Get(pairURL)
+	if err != nil {
+		t.Fatalf("pair: %v", err)
+	}
+	defer resp.Body.Close()
+	var got *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == cookieName {
+			got = c
+		}
+	}
+	if got == nil {
+		t.Fatal("no session cookie issued")
+	}
+	if got.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("SameSite = %v, want Lax", got.SameSite)
+	}
+}
+
 func TestRootRequiresAuth(t *testing.T) {
 	_, pairURL := startTestServer(t, nil)
 	base := pairURL[:strings.Index(pairURL, "/pair")]

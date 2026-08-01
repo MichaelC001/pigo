@@ -264,7 +264,13 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 		Value:    cred,
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
+		// Lax, not Strict: the pairing link is opened as a top-level navigation from
+		// a QR scan (no same-site referrer), and some mobile browsers drop a Strict
+		// cookie across the /pair→/ redirect that follows — sending the browser to
+		// the unauthenticated page. Lax is sent on top-level GET navigations (which
+		// is all this cookie is read on) while still withholding it from cross-site
+		// subrequests, so it fixes the redirect without weakening the guard.
+		SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, "/", http.StatusFound)
 }

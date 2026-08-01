@@ -33,6 +33,7 @@ import (
 	"github.com/smallnest/pigo/internal/provider"
 	"github.com/smallnest/pigo/internal/runtime"
 	"github.com/smallnest/pigo/internal/session"
+	"github.com/smallnest/pigo/internal/trust"
 )
 
 // runSession holds the assembled per-session state for a TUI run: the persisted
@@ -84,6 +85,11 @@ type runSession struct {
 	// two-stage interrupt (Model.interruptFn → interrupt) calls it. It is nil
 	// before the first run and after a run is cancelled.
 	cancelRun context.CancelFunc
+
+	// remote owns the running remote-control server+bridge (remotecontrol.go),
+	// nil when /remote-control is off. buildConfig reads it to install the remote
+	// confirm seam so risky tool calls route to the paired browser while connected.
+	remote *remoteSession
 }
 
 // newRunSession assembles the run session from the resolved Options, opening the
@@ -256,6 +262,15 @@ func (s *runSession) buildConfig() runtime.RunConfig {
 	// no-op so the hot path pays nothing when no hooks are configured (FR-18).
 	if s.dispatcher != nil {
 		run.InstallSeams(&cfg, s.dispatcher, s.hookDeps)
+	}
+	// When remote control is active, route side-effect tool-call confirmations to
+	// the paired browser (no-op when no client is connected or the cwd is trusted,
+	// so the non-remote path is unchanged). The trust manager is read from the
+	// shared store; a nil manager disables the seam.
+	if s.remote != nil {
+		if mgr, err := trust.NewManager(trust.DefaultPath()); err == nil {
+			cfg.Batch.ToolExecutorConfig.BeforeToolCall = remoteConfirmSeam(s.remote, mgr, s.hookDeps.ProjectDir)
+		}
 	}
 	return cfg
 }
