@@ -4,7 +4,7 @@
 // the LoopConfig.GetAPIKey shape (func(ctx, provider) string) so the agent loop
 // can obtain a fresh key per request.
 //
-// Security (FR: 敏感值不写入日志): secret values are never logged or embedded in
+// Security (FR: secret values are not written to logs): secret values are never logged or embedded in
 // error messages. Errors and String()/redaction helpers reference credentials
 // by key name / provider only.
 package provider

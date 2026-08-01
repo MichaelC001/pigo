@@ -121,7 +121,7 @@ func TestBuildSlashRegistryIncludesSkills(t *testing.T) {
 
 // TestBuildSlashRegistryNoSkills verifies that when no skills are passed (as
 // under --no-skills, where loadSkills returns nil), a /skill-name command is not
-// registered even though a skill file exists on disk (对标 pi 的 --no-skills).
+// registered even though a skill file exists on disk (mirrors pi's --no-skills).
 func TestBuildSlashRegistryNoSkills(t *testing.T) {
 	t.Setenv("PIGO_HOME", t.TempDir())
 

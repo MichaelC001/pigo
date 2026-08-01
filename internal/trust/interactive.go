@@ -40,7 +40,7 @@ var SideEffectTools = map[string]bool{
 }
 
 // EstablishTrust decides how the launch directory's trust is established before
-// the REPL runs. When approve is true (对标 pi 的 --approve/-a), it grants
+// the REPL runs. When approve is true (mirrors pi's --approve/-a), it grants
 // session trust up front so the first-launch prompt is skipped and side-effect
 // tools run without per-call confirmation. Otherwise it defers to
 // EnsureTrustPrompt, which asks only on the first launch in an undecided

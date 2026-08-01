@@ -1,5 +1,5 @@
-// This file implements structured telemetry collection for a loop run (可观测性
-// ——结构化遥测采集). A lightweight accumulator observes the AgentEvents the loop
+// This file implements structured telemetry collection for a loop run
+// (observability -- structured telemetry collection). A lightweight accumulator observes the AgentEvents the loop
 // already emits and folds them into a compact summary — per-tool wall-clock
 // durations, turn count, truncation count, compaction count, and the latest
 // context-utilization ratio — that is surfaced once at run end as a

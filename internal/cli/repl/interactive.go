@@ -55,7 +55,7 @@ type Options struct {
 
 	// Approve, when true, grants the launch directory session trust before the
 	// run so the first-launch trust prompt is skipped and side-effect tools run
-	// without per-call confirmation (对标 pi 的 --approve/-a).
+	// without per-call confirmation (mirrors pi's --approve/-a).
 	Approve bool
 	// Skills is the pre-loaded skill set (loaded once by setupAgentEnv, shared
 	// with prompt injection). Each is registered as a /skill-name command. Empty
@@ -168,7 +168,7 @@ func Run(opts Options) error {
 	reader := bufio.NewReaderSize(os.Stdin, replScanBufInit)
 
 	// Wire slash-commands: built-ins (compile-time) plus any user templates under
-	// ~/.pigo/commands (对标 the commands/*.md convention) plus skills under
+	// ~/.pigo/commands (mirrors the commands/*.md convention) plus skills under
 	// ~/.agents/skills. A load error is non-fatal — the REPL still runs with the
 	// built-ins. Instance built-ins that need live state (/model, /help) are
 	// registered against `live`.
@@ -184,7 +184,7 @@ func Run(opts Options) error {
 	}
 	trust.RegisterCommand(slash, mgr, cwd)
 
-	// --approve grants the launch directory session trust up front (对标 pi 的
+	// --approve grants the launch directory session trust up front (mirrors pi's
 	// --approve/-a), so the first-launch prompt is skipped and side-effect tools
 	// run without per-call confirmation. Otherwise, on the first launch in an
 	// undecided directory, ask the user how much to trust it before any tool

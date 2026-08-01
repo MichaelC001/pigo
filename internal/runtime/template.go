@@ -2,7 +2,7 @@
 // turns a template body plus tokenized invocation args into the final prompt
 // text, supporting pi's positional/default/slice syntax.
 //
-// Supported placeholders (对标 https://pi.dev/docs/latest/prompt-templates):
+// Supported placeholders (mirrors https://pi.dev/docs/latest/prompt-templates):
 //   - $1, $2, ... $N      : Nth positional arg (1-indexed; out-of-range -> "")
 //   - $@, $ARGUMENTS      : all args joined by a single space
 //   - ${1:-default}       : arg 1 when present and non-empty, else `default`

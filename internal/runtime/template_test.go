@@ -130,7 +130,7 @@ func TestExpandTemplateOrderingNoDoubleMatch(t *testing.T) {
 }
 
 func TestExpandTemplateExampleFromSpec(t *testing.T) {
-	// $@ expands to ALL args joined (AC: "全部参数以单空格连接").
+	// $@ expands to ALL args joined (AC: "all args joined by a single space").
 	if got := ExpandTemplate("echo $@", []string{"a", "b", "c"}); got != "echo a b c" {
 		t.Errorf("$@ all-args: got %q", got)
 	}

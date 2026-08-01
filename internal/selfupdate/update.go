@@ -52,11 +52,11 @@ type Updater struct {
 func Run(ctx context.Context, current string, out, errOut io.Writer) int {
 	tag, err := LatestTag(ctx, nil, Repo)
 	if err != nil {
-		fmt.Fprintf(errOut, "pigo: 检查更新失败: %v\n", err)
+		fmt.Fprintf(errOut, "pigo: failed to check for updates: %v\n", err)
 		return 1
 	}
 	if avail, comparable := UpdateAvailable(current, tag); comparable && !avail {
-		fmt.Fprintf(out, "已是最新版本 %s\n", current)
+		fmt.Fprintf(out, "already up to date at %s\n", current)
 		return 0
 	}
 	u, err := NewUpdater()
@@ -68,7 +68,7 @@ func Run(ctx context.Context, current string, out, errOut io.Writer) int {
 		fmt.Fprintf(errOut, "pigo: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(out, "已更新到 %s\n", tag)
+	fmt.Fprintf(out, "updated to %s\n", tag)
 	return 0
 }
 
@@ -126,7 +126,7 @@ func (u *Updater) Apply(ctx context.Context, tag string, out io.Writer) error {
 	archive := u.archiveName(versionNoV)
 	base := fmt.Sprintf("%s/%s", strings.TrimRight(u.ReleaseBaseURL, "/"), tag)
 
-	fmt.Fprintf(out, "下载 %s ...\n", archive)
+	fmt.Fprintf(out, "downloading %s ...\n", archive)
 	archiveBytes, err := u.download(ctx, base+"/"+archive)
 	if err != nil {
 		return fmt.Errorf("selfupdate: download archive: %w", err)
@@ -180,7 +180,7 @@ func (u *Updater) replace(newBin []byte) error {
 	dir := filepath.Dir(u.ExecPath)
 	tmp, err := os.CreateTemp(dir, ".pigo-update-*")
 	if err != nil {
-		return fmt.Errorf("selfupdate: cannot write to %s: %w (尝试用 sudo 运行，或将 pigo 安装到可写目录)", dir, err)
+		return fmt.Errorf("selfupdate: cannot write to %s: %w (try running with sudo, or install pigo to a writable directory)", dir, err)
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) // no-op after successful rename

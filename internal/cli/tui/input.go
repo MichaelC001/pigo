@@ -47,7 +47,7 @@ type input struct {
 func newInput() input {
 	ta := textarea.New()
 	ta.Prompt = "> "
-	ta.Placeholder = "输入消息…（Enter 发送，Shift+Enter 换行）"
+	ta.Placeholder = "Type a message… (Enter to send, Shift+Enter for newline)"
 	ta.ShowLineNumbers = false
 	ta.CharLimit = 0
 	// Let the textarea own its own height: DynamicHeight grows/shrinks it to the

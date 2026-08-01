@@ -36,7 +36,7 @@ type Options struct {
 
 	// Approve, when true, grants the launch directory session trust before the
 	// run so the first-launch trust prompt is skipped and side-effect tools run
-	// without per-call confirmation (对标 pi 的 --approve/-a).
+	// without per-call confirmation (mirrors pi's --approve/-a).
 	Approve bool
 	// Skills is the pre-loaded skill set (loaded once by run.SetupEnv, shared with
 	// prompt injection). Each is registered as a /skill-name command. Empty under

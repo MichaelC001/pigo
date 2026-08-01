@@ -96,7 +96,7 @@ func TestRunHeadlessStreamJSON(t *testing.T) {
 // TestRunHeadlessStreamJSONSessionID verifies that when RunConfig.SessionID is
 // set, the first stream-json event (agent_start) carries it under "sessionId",
 // so a consumer can associate the run's output with a session and resume it
-// later (对标 pi/Claude Code). When SessionID is empty the key is omitted.
+// later (mirrors pi/Claude Code). When SessionID is empty the key is omitted.
 func TestRunHeadlessStreamJSONSessionID(t *testing.T) {
 	run := func(sessionID string) map[string]any {
 		p := &fauxProvider{

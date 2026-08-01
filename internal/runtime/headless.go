@@ -192,7 +192,7 @@ func eventEnvelope(ev agentcore.AgentEvent) map[string]any {
 	env := map[string]any{"type": ev.EventType()}
 	switch e := ev.(type) {
 	case agentcore.AgentStartEvent:
-		// The first event carries the backing session id (对标 pi/Claude Code),
+		// The first event carries the backing session id (mirrors pi/Claude Code),
 		// so a consumer can associate the run's output with a session and resume
 		// it later. Omitted only when the run has no backing session (SessionID
 		// unset), which the envelope treats as "not resumable".
@@ -237,7 +237,7 @@ func eventEnvelope(ev agentcore.AgentEvent) map[string]any {
 		}
 	case agentcore.TelemetryEvent:
 		// The run-end telemetry summary: structured metrics a script can read
-		// directly from the stream-json output (可观测性——结构化遥测采集). Per-tool
+		// directly from the stream-json output (observability -- structured telemetry collection). Per-tool
 		// timings are flattened into a name→{count,totalMs} object so a JSON
 		// consumer can index by tool name.
 		env["turns"] = e.Turns

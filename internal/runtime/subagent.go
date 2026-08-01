@@ -10,7 +10,7 @@
 // Two isolation modes are supported, selected by SubAgentSpec.Isolation:
 //
 //   - Goroutine (default): the child loop runs in-process in a goroutine sharing
-//     the parent process, matching the original "单进程 goroutine" decision.
+//     the parent process, matching the original "single-process goroutine" decision.
 //   - Process: the parent spawns a fresh pigo subprocess (pigo --subagent-rpc)
 //     and delegates the run over stdio JSON-RPC (reusing internal/jsonrpc). The
 //     child runs in a separate process, so a crash or resource leak in the child

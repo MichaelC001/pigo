@@ -4,7 +4,7 @@ package runtime
 // contract, the shared concurrency semaphore (N > cap never exceeds cap), the
 // nesting guard (child tool set excludes "task"), that a task returns the
 // child's final text, and that a failed child surfaces as a tool error. The
-// child loop is driven through the faux provider seam (对标 orchestration_test.go);
+// child loop is driven through the faux provider seam (mirrors orchestration_test.go);
 // only the provider boundary is faked.
 
 import (

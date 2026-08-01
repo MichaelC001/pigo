@@ -10,7 +10,7 @@
 // whitespace is preserved.
 //
 // Rather than hand-roll a tokenizer, we reuse a mature shell-quoting library
-// (github.com/kballard/go-shellquote), per the project's "复用而非自实现" rule.
+// (github.com/kballard/go-shellquote), per the project's "reuse rather than reinvent" rule.
 package runtime
 
 import "github.com/kballard/go-shellquote"

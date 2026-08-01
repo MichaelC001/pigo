@@ -18,7 +18,7 @@ func TestColorizeGating(t *testing.T) {
 }
 
 // TestColorEnabledRespectsNoColor verifies NO_COLOR forces color off even on a
-// terminal (对标 https://no-color.org).
+// terminal (mirrors https://no-color.org).
 func TestColorEnabledRespectsNoColor(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	if Enabled() {

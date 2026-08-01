@@ -265,7 +265,7 @@ var providerRegistry = []ProviderSpec{
 	// OpenAI-compatible driver with no bespoke auth. Base URLs are the platforms'
 	// OpenAI-compatible endpoints as documented at implementation time.
 	{
-		// 百度智能云千帆 (Baidu Qianfan).
+		// Baidu AI Cloud Qianfan (Baidu Qianfan).
 		Name:           "qianfan",
 		EnvVars:        []string{"QIANFAN_API_KEY"},
 		DefaultBaseURL: "https://qianfan.baidubce.com/v2",
@@ -273,7 +273,7 @@ var providerRegistry = []ProviderSpec{
 		AuthScheme:     AuthBearer,
 	},
 	{
-		// 字节火山引擎方舟 (Volcengine Ark). ARK_API_KEY is the platform's
+		// ByteDance Volcengine Ark (Volcengine Ark). ARK_API_KEY is the platform's
 		// conventional variable; VOLCENGINE_API_KEY is accepted as a fallback.
 		Name:           "volcengine",
 		EnvVars:        []string{"ARK_API_KEY", "VOLCENGINE_API_KEY"},
@@ -282,7 +282,7 @@ var providerRegistry = []ProviderSpec{
 		AuthScheme:     AuthBearer,
 	},
 	{
-		// 阿里云百炼 (DashScope), OpenAI-compatible mode.
+		// Alibaba Cloud DashScope (DashScope), OpenAI-compatible mode.
 		Name:           "dashscope",
 		EnvVars:        []string{"DASHSCOPE_API_KEY"},
 		DefaultBaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -290,7 +290,7 @@ var providerRegistry = []ProviderSpec{
 		AuthScheme:     AuthBearer,
 	},
 	{
-		// 腾讯混元 (Hunyuan), OpenAI-compatible endpoint.
+		// Tencent Hunyuan (Hunyuan), OpenAI-compatible endpoint.
 		Name:           "hunyuan",
 		EnvVars:        []string{"HUNYUAN_API_KEY"},
 		DefaultBaseURL: "https://api.hunyuan.cloud.tencent.com/v1",

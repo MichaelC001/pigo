@@ -55,7 +55,7 @@ func TestToolCardRender(t *testing.T) {
 				state:    tc.state,
 			}
 			out := card.render(theme, 60)
-			for _, want := range []string{"read_file", tc.icon, "调用输入参数", "path: /tmp/x", "Response", "line one", "nested"} {
+			for _, want := range []string{"read_file", tc.icon, "Input arguments", "path: /tmp/x", "Response", "line one", "nested"} {
 				if !strings.Contains(out, want) {
 					t.Errorf("render missing %q\n%s", want, out)
 				}

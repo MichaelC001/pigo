@@ -5,7 +5,7 @@
 // using the same "role"-discriminated encoding as agentcore.MessageList.
 //
 // The format is internally self-consistent and deliberately NOT wire-compatible
-// with pi's session files (spec #16, 会话格式 decision #5): pigo owns the schema
+// with pi's session files (spec #16, session-format decision #5): pigo owns the schema
 // and versions it via SessionHeader.Version so future migrations have a hook.
 //
 // A persisted session round-trips into an agentcore.AgentContext via Load, so a

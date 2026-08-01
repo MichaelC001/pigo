@@ -305,7 +305,7 @@ func (e *replLineEditor) remember(line string) {
 }
 
 // formatSlashAutocompleteLabel renders a slash command for the Tab-completion
-// hint as "name <argument-hint> - description" (对标 pi's autocomplete). The
+// hint as "name <argument-hint> - description" (mirrors pi's autocomplete). The
 // argument-hint is shown verbatim (frontmatter supplies its own <angle>/
 // [square] brackets); it and the description are omitted when absent, so a
 // bare command renders as just its name.
@@ -522,7 +522,7 @@ func (e *replLineEditor) editLoop(prompt string) (string, error) {
 				input := buf.lines[0]
 				if strings.HasPrefix(s, "/") {
 					// Slash command: render the argument-hint + description label
-					// (对标 pi autocomplete) instead of the bare name suffix.
+					// (mirrors pi's autocomplete) instead of the bare name suffix.
 					label := s
 					if cmd, ok := e.slash.Lookup(s[1:]); ok {
 						label = formatSlashAutocompleteLabel(cmd)

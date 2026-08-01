@@ -1,6 +1,6 @@
 package run
 
-// Tests for --append-system-prompt value resolution (对标 pi): each value is
+// Tests for --append-system-prompt value resolution (mirrors pi): each value is
 // either a path to an existing file whose contents are appended, or literal
 // text when it is not an existing file. A value that names an unreadable file
 // (a real I/O error other than not-exist) is surfaced rather than silently

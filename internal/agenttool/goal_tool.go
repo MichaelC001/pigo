@@ -1,5 +1,5 @@
 // This file implements the goal state and the two goal-control tools that power
-// the /goal command (对标 pi-goal / Claude Code's goal mode): given a high-level
+// the /goal command (mirrors pi-goal / Claude Code's goal mode): given a high-level
 // objective, the agent runs autonomously — re-prompted turn after turn — until
 // it either declares the goal done (goal_complete), hits a true impasse
 // (goal_blocked), or a safety guard / token budget stops it.
@@ -204,7 +204,7 @@ func terminatePtr() *bool { b := true; return &b }
 // contradictorySummary reports whether a goal_complete summary plainly claims the
 // goal is NOT done — a guard against the model closing a goal it just admitted
 // is unfinished. The check is a conservative substring match on well-known
-// negative phrasings (English + 中文), matching pi-goal's "plainly contradictory
+// negative phrasings (English), matching pi-goal's "plainly contradictory
 // summary" rejection.
 func contradictorySummary(summary string) bool {
 	lower := strings.ToLower(summary)
@@ -218,12 +218,12 @@ func contradictorySummary(summary string) bool {
 		"could not",
 		"couldn't",
 		"unable to",
-		"未完成",
-		"没有完成",
-		"未能",
-		"无法完成",
-		"仍然失败",
-		"测试失败",
+		"unfinished",
+		"did not finish",
+		"failed to",
+		"cannot complete",
+		"still fails",
+		"test failure",
 	} {
 		if strings.Contains(lower, bad) || strings.Contains(summary, bad) {
 			return true

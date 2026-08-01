@@ -98,7 +98,7 @@ type RunConfig struct {
 
 	// SessionID, when set, is carried in the run's agent_start event so a
 	// stream-json consumer sees the backing session id in the first event and can
-	// resume the run later (对标 pi/Claude Code).
+	// resume the run later (mirrors pi/Claude Code).
 	SessionID string
 }
 

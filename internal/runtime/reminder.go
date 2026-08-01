@@ -234,7 +234,7 @@ func (p *OneShotReminderProvider) Reminder(ctx context.Context, _ agentcore.Mess
 }
 
 // GoalReminderProvider surfaces the active goal as background context each turn
-// so the model keeps working toward it (对标 pi-goal). It reads the same
+// so the model keeps working toward it (mirrors pi-goal). It reads the same
 // GoalState the /goal command drives, so the reminder always reflects the live
 // objective. It fires only while the goal is active — a paused, blocked, or
 // completed goal (and an idle state) injects nothing.

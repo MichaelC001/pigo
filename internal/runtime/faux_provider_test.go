@@ -1,6 +1,6 @@
 package runtime
 
-// This file implements the faux provider (对标 pi providers/faux.ts) and the
+// This file implements the faux provider (mirrors pi providers/faux.ts) and the
 // loop integration tests that drive the whole agent loop through it — the
 // project's primary and only core test seam (US-002 / Testing Decisions, #16).
 //

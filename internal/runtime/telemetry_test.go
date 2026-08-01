@@ -1,6 +1,6 @@
 package runtime
 
-// Tests for structured telemetry collection (可观测性——结构化遥测采集, node-251):
+// Tests for structured telemetry collection (observability -- structured telemetry collection, node-251):
 // the loop accumulates per-tool durations, turn count, truncation count,
 // compaction count, and the latest context-utilization ratio, then surfaces
 // them as a TelemetryEvent emitted just before agent_end. Both the unit-level
@@ -75,7 +75,7 @@ func TestTelemetryObserveCounters(t *testing.T) {
 	tel.observe(agentcore.TurnStartEvent{})
 	tel.observe(agentcore.TurnEndEvent{Message: agentcore.AssistantMessage{StopReason: agentcore.StopReasonLength}})
 	tel.observe(agentcore.TurnEndEvent{Message: agentcore.AssistantMessage{StopReason: agentcore.StopReasonEndTurn}})
-	tel.observe(agentcore.CompactionEvent{}) // success
+	tel.observe(agentcore.CompactionEvent{})                     // success
 	tel.observe(agentcore.CompactionEvent{ErrorMessage: "boom"}) // failure, not counted
 
 	sum := tel.summary()

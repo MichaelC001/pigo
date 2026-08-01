@@ -31,7 +31,7 @@ func StdoutIsTerminal() bool {
 }
 
 // Enabled reports whether ANSI color should be emitted. Color is on only when
-// stdout is an interactive terminal and NO_COLOR is unset (对标 the
+// stdout is an interactive terminal and NO_COLOR is unset (mirrors the
 // https://no-color.org convention). This keeps piped/redirected output and CI
 // logs free of escape codes.
 func Enabled() bool {

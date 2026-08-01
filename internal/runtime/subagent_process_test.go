@@ -226,7 +226,7 @@ func TestRunSubAgentOnce(t *testing.T) {
 // TestSubAgentProcessDefaultCall exercises the real defaultProcessCall transport
 // (exec + stdio JSON-RPC) against a tiny compiled helper binary. It verifies the
 // happy round-trip (prompt forwarded, result decoded) and that a crashing
-// subprocess is surfaced as a Go error (the AC: "子进程崩溃被父捕获为工具错误").
+// subprocess is surfaced as a Go error (the AC: "a subprocess crash is caught by the parent as a tool error").
 func TestSubAgentProcessDefaultCall(t *testing.T) {
 	bin := buildSubAgentHelper(t)
 	cfg := SubAgentProcessConfig{Command: bin}

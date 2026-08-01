@@ -1,5 +1,5 @@
 // This file implements declarative skills (US-028, #45): a skill is a markdown
-// file with a YAML frontmatter block (对标 SKILL.md) that names a reusable
+// file with a YAML frontmatter block (mirrors SKILL.md) that names a reusable
 // capability. Loading a skill parses its metadata (name, description, optional
 // tool allow-list and model) and its markdown body (the skill's system prompt),
 // then materializes it as a sub-agent tool — so invoking a skill runs its body
@@ -39,12 +39,12 @@ type SkillFrontmatter struct {
 	Model string `yaml:"model"`
 	// DisableModelInvocation, when true, keeps the skill out of the system
 	// prompt's <available_skills> list so the model cannot auto-invoke it; it
-	// remains reachable only via its explicit "/name" slash command (对标 pi 的
+	// remains reachable only via its explicit "/name" slash command (mirrors pi's
 	// disable-model-invocation frontmatter key). Defaults to false.
 	DisableModelInvocation bool `yaml:"disable-model-invocation"`
 }
 
-// Agent Skills spec limits (对标 pi/agentskills.io): a skill name is a short
+// Agent Skills spec limits (mirrors pi/agentskills.io): a skill name is a short
 // slug and a description is a single sentence, both bounded so they stay cheap
 // to inject into the system prompt.
 const (
@@ -193,7 +193,7 @@ func splitFrontmatter(content []byte) (frontmatter, body []byte, err error) {
 }
 
 // LoadSkillsDir loads every "*.md" skill file in dir (non-recursively) plus any
-// "<name>/SKILL.md" nested layout (对标 the SKILL.md convention). It returns the
+// "<name>/SKILL.md" nested layout (mirrors the SKILL.md convention). It returns the
 // parsed skills sorted by name. A missing directory yields no skills and no
 // error (skills are optional).
 //
@@ -267,7 +267,7 @@ func (s *Skill) SkillTool(tools []agentcore.AgentTool, newRunConfig func(tools [
 	return NewSubAgentTool(s.SubAgentSpec(tools, newRunConfig))
 }
 
-// SlashCommand exposes the skill as a "/name" slash command (对标 Claude Code's
+// SlashCommand exposes the skill as a "/name" slash command (mirrors Claude Code's
 // /skill-name invocation). Invoking it expands to the skill's instructions (its
 // markdown body) as the prompt, with any arguments appended, so the skill runs
 // in the current conversation. It is a prompt command (not an action): the
@@ -291,7 +291,7 @@ func (s *Skill) SlashCommand() SlashCommand {
 }
 
 // FormatSkillsForPrompt renders the visible skills as an <available_skills>
-// XML block for injection into the system prompt (对标 pi 的
+// XML block for injection into the system prompt (mirrors pi's
 // formatSkillsForPrompt). It implements progressive disclosure: only each
 // skill's name, description, and location (the absolute SKILL.md path) are
 // listed, so the model can read the file on demand rather than carrying every

@@ -93,7 +93,7 @@ type replDeps struct {
 	// of rewriting the file as a single linear chain.
 	persisted int
 
-	// goal holds the session's autonomous-goal state (对标 pi-goal), driven by
+	// goal holds the session's autonomous-goal state (mirrors pi-goal), driven by
 	// the /goal command. It is always non-nil (Run seeds an idle
 	// state); the GoalReminderProvider and the goal tools share this handle so
 	// the objective is injected each turn and goal_complete/goal_blocked can end

@@ -1,4 +1,4 @@
-// Tests for the goal tools (对标 pi-goal): goal_complete validation (empty and
+// Tests for the goal tools (mirrors pi-goal): goal_complete validation (empty and
 // contradictory summaries are rejected, a valid summary marks complete and
 // terminates the run), goal_blocked validation, and GoalState counter/lifecycle
 // behavior. Mirrors todo_tool_test.go's structure.
@@ -81,7 +81,7 @@ func TestGoalCompleteRejectsContradictory(t *testing.T) {
 	for _, summary := range []string{
 		`{"summary":"the goal is not complete yet"}`,
 		`{"summary":"tests still fail but I stopped"}`,
-		`{"summary":"任务未完成"}`,
+		`{"summary":"the task is unfinished"}`,
 	} {
 		res := execGoalComplete(t, tool, summary)
 		if !isErrorResult(res) {

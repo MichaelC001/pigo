@@ -30,7 +30,7 @@ const (
 // AgentStartEvent is emitted once when a loop run begins. SessionID, when set,
 // is the id of the session backing this run; it is carried in the first
 // stream-json event so a caller can associate output with a session and resume
-// it later (对标 pi/Claude Code, which put a session id in the first event).
+// it later (mirrors pi/Claude Code, which put a session id in the first event).
 type AgentStartEvent struct {
 	SessionID string
 }
@@ -147,7 +147,7 @@ type ToolTiming struct {
 // at run end (just before agent_end) so scripts consuming the stream-json
 // output can read structured metrics without a new dependency (no
 // Prometheus/OTLP). It is purely observational: consumers that ignore it behave
-// exactly as before. Metrics covered (可观测性——结构化遥测采集):
+// exactly as before. Metrics covered (observability — structured telemetry collection):
 //   - per-tool wall-clock durations (ToolDurationsMs, aggregated by tool name),
 //   - how many turns ran (Turns),
 //   - how many assistant responses were truncated by the output cap

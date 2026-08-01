@@ -1,4 +1,4 @@
-// This file implements the /btw command (对标 Claude Code's /btw and the pi
+// This file implements the /btw command (mirrors Claude Code's /btw and the pi
 // agent extension @narumitw/pi-btw): a throwaway "side thread" for asking the
 // model a quick side question that must NOT pollute the main conversation.
 //
@@ -44,7 +44,7 @@ import (
 
 // btwHeader is the fixed banner shown when entering a side thread, so the user
 // always knows the current input is a throwaway side question, not the main
-// conversation (对标 pi-btw's "btw · side thread" header).
+// conversation (mirrors pi-btw's "btw · side thread" header).
 const btwHeader = "btw · side thread"
 
 // BtwHeader exposes the side-thread banner text so callers (and tests) can

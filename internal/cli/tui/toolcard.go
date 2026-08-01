@@ -81,7 +81,7 @@ func (c toolCard) styledIcon(theme Theme) string {
 }
 
 // render draws the card at the given content width: a rounded border wrapping a
-// header (status icon + tool name), a "调用输入参数" section listing the input map,
+// header (status icon + tool name), an "Input arguments" section listing the input map,
 // and a "Response" section with the tree lines. When not expanded the response
 // is capped to collapsedResponseLines with a "(Ctrl+O for more)" hint; when
 // expanded every line is shown.
@@ -108,7 +108,7 @@ func (c toolCard) render(theme Theme, width int) string {
 	lines = append(lines, icon+" "+theme.ToolHeader.Render(header))
 
 	if len(c.input) > 0 {
-		lines = append(lines, theme.ToolBody.Render("调用输入参数"))
+		lines = append(lines, theme.ToolBody.Render("Input arguments"))
 		for _, k := range sortedKeys(c.input) {
 			kv := "  " + k + ": " + fmt.Sprintf("%v", c.input[k])
 			lines = append(lines, theme.ToolBody.Render(WrapToWidth(kv, inner)))

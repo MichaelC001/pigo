@@ -1,7 +1,7 @@
 // This file implements the /btw model/thinking override config (US-005, #282):
 // an optional per-command config that lets a side thread use a different model
 // and/or reasoning effort than the main session, without touching the main
-// session's settings (对标 pi-btw's pi-btw.json).
+// session's settings (mirrors pi-btw's pi-btw.json).
 //
 // The config lives at $PIGO_HOME/btw.json (or ~/.pigo/btw.json). It is read
 // fresh on every /btw invocation, so editing it takes effect on the next call

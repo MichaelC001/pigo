@@ -384,7 +384,7 @@ func TestModelSubagentPanelNavigation(t *testing.T) {
 	}
 }
 
-// TestModelSubagentEscReturnsToInput verifies the one-key escape ("脱困:一键回输入框"):
+// TestModelSubagentEscReturnsToInput verifies the one-key escape ("escape hatch: one key back to the input box"):
 // while a sub-agent runs the composer is blurred (no typing), and after arrowing
 // into the panel a single Esc both clears the selection and re-focuses the input
 // box — so returning to the composer never requires more than one press and never

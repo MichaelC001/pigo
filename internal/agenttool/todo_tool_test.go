@@ -22,7 +22,7 @@ func execTodo(t *testing.T, tool *TodoTool, args string) agentcore.AgentToolResu
 }
 
 // TestTodoToolRegisters checks the tool registers cleanly (valid schema) and is
-// retrievable — the "注册进 agenttool registry" acceptance criterion.
+// retrievable — the "registered in the agenttool registry" acceptance criterion.
 func TestTodoToolRegisters(t *testing.T) {
 	reg := NewToolRegistry()
 	tool := &TodoTool{Store: NewTodoStore()}

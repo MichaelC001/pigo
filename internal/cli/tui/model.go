@@ -418,7 +418,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.session != nil {
 			m.session.compacted = true
 		}
-		m.transcript.addSystem("（上下文已压缩）")
+		m.transcript.addSystem("(context compacted)")
 		return m, m.pumpNext()
 
 	case runEndMsg:
@@ -430,7 +430,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.subagents = subagentPanel{}
 		m.relayout()
 		if msg.err != nil {
-			m.transcript.addSystem("运行结束：" + msg.err.Error())
+			m.transcript.addSystem("Run ended: " + msg.err.Error())
 		}
 		// Persist the turn's new messages as a branch so the conversation survives
 		// exit and can be resumed (FR-16). This is race-free: the pump goroutine
@@ -440,7 +440,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// is surfaced but non-fatal.
 		if m.session != nil {
 			if err := m.session.persist(); err != nil {
-				m.transcript.addSystem("会话保存失败：" + err.Error())
+				m.transcript.addSystem("Session save failed: " + err.Error())
 			}
 		}
 		// The editor was blurred at submit; re-enable it so the next prompt can be
@@ -708,7 +708,7 @@ func (m Model) runSlash(line string) (tea.Model, tea.Cmd) {
 	m.menu.close()
 	m.relayout()
 	if m.slash == nil {
-		m.transcript.addSystem("斜杠命令不可用")
+		m.transcript.addSystem("Slash commands unavailable")
 		return m, nil
 	}
 	outcome, err := m.slash.ResolveOutcome(line)
@@ -799,7 +799,7 @@ func (m Model) historyNext(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // plain submit and by a slash prompt/skill command.
 func (m Model) startPrompt(prompt string) (tea.Model, tea.Cmd) {
 	if m.startRunFn == nil {
-		m.transcript.addSystem("（运行未接入：会话装配见 #392）")
+		m.transcript.addSystem("(run not wired up: see session assembly in #392)")
 		return m, nil
 	}
 	m.input.Blur()
@@ -850,7 +850,7 @@ func (m Model) interruptOrQuit() (tea.Model, tea.Cmd) {
 		if m.interruptFn != nil {
 			m.interruptFn()
 		}
-		m.transcript.addSystem("（正在中断当前运行…）")
+		m.transcript.addSystem("(interrupting the current run…)")
 		return m, nil
 	}
 	m.quitting = true

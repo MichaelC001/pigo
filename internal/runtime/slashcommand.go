@@ -5,7 +5,7 @@
 //   - Built-in commands are registered at compile time via RegisterBuiltin
 //     (from init() in the fork's own code). They are always available.
 //   - User commands are declarative markdown templates loaded from a directory
-//     (对标 the .../commands/*.md convention): the file name is the command
+//     (mirrors the .../commands/*.md convention): the file name is the command
 //     name and the body is a prompt template that may reference $ARGUMENTS.
 //
 // Conflict rule: same-name commands resolve by priority tier (built-in >
@@ -61,7 +61,7 @@ func (s SlashCommandSource) String() string {
 }
 
 // Tier is the priority tier of a command, used to resolve same-name conflicts
-// across sources (对标 pi prompt-templates discovery priority). Higher tiers
+// across sources (mirrors pi prompt-templates discovery priority). Higher tiers
 // win; the loser is recorded in Shadowed. Within the same tier the last-added
 // command wins (a re-load overrides). Skills and plugins are treated as
 // Global-tier for priority - their finer Source label is for display only.
@@ -423,7 +423,7 @@ func (r *SlashRegistry) ResolveOutcome(input string) (SlashOutcome, error) {
 
 // firstNonEmptyLine returns the first line of s whose trimmed form is non-empty,
 // itself trimmed. It is the description fallback for templates whose frontmatter
-// omits a description (对标 pi: "If missing, the first non-empty line is used").
+// omits a description (mirrors pi: "If missing, the first non-empty line is used").
 func firstNonEmptyLine(s string) string {
 	for _, line := range strings.Split(s, "\n") {
 		if t := strings.TrimSpace(line); t != "" {
@@ -450,7 +450,7 @@ func LoadPromptFile(path string) (SlashCommand, error) {
 // LoadUserCommandsDir loads declarative markdown command templates from dir
 // (non-recursively). Each "*.md" file defines a command named after the file
 // (without extension). The file may carry an optional YAML frontmatter block
-// with a "description" (对标 skills); the remaining body is the prompt template,
+// with a "description" (mirrors skills); the remaining body is the prompt template,
 // expanded via ExpandTemplate at invoke time. A missing directory yields no
 // commands and no error.
 func LoadUserCommandsDir(dir string) ([]SlashCommand, error) {

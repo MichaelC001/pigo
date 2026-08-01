@@ -1,6 +1,6 @@
 // This file defines the built-in preset catalog: a curated set of ready-to-use
 // (provider, model) pairs a user can pick from without knowing each gateway's
-// wire details (对标 pi agent's preset provider/model picker). It covers the
+// wire details (mirrors pi agent's preset provider/model picker). It covers the
 // OpenAI-compatible gateways pigo ships — OpenRouter and NVIDIA NIM — plus a few
 // local Ollama defaults.
 //
@@ -157,19 +157,19 @@ var PresetCatalog = []PresetModel{
 	{Provider: "xiaomi", ID: "mimo-v2.5", DisplayName: "MiMo-V2.5"},
 	{Provider: "xiaomi", ID: "mimo-v2.5-pro", DisplayName: "MiMo-V2.5-Pro"},
 
-	// --- 百度智能云千帆 Qianfan (OpenAI-compatible; ERNIE family) ---
-	{Provider: "qianfan", ID: "ernie-4.5-turbo-32k", DisplayName: "ERNIE 4.5 Turbo (百度千帆)"},
+	// --- Baidu AI Cloud Qianfan (OpenAI-compatible; ERNIE family) ---
+	{Provider: "qianfan", ID: "ernie-4.5-turbo-32k", DisplayName: "ERNIE 4.5 Turbo (Baidu Qianfan)"},
 
-	// --- 字节火山引擎方舟 Volcengine Ark (OpenAI-compatible; Doubao family) ---
-	// Some Ark models require a "推理接入点 ID (endpoint id)" instead of a model
+	// --- ByteDance Volcengine Ark (OpenAI-compatible; Doubao family) ---
+	// Some Ark models require an "inference endpoint ID (endpoint id)" instead of a model
 	// name — use --base-url / -m to target those; this preset uses a model name.
-	{Provider: "volcengine", ID: "doubao-seed-1-6", DisplayName: "Doubao Seed 1.6 (火山方舟)"},
+	{Provider: "volcengine", ID: "doubao-seed-1-6", DisplayName: "Doubao Seed 1.6 (Volcengine Ark)"},
 
-	// --- 阿里云百炼 DashScope (OpenAI-compatible; Qwen family) ---
-	{Provider: "dashscope", ID: "qwen-max", DisplayName: "Qwen Max (阿里百炼)"},
+	// --- Alibaba Cloud DashScope (OpenAI-compatible; Qwen family) ---
+	{Provider: "dashscope", ID: "qwen-max", DisplayName: "Qwen Max (Alibaba DashScope)"},
 
-	// --- 腾讯混元 Hunyuan (OpenAI-compatible) ---
-	{Provider: "hunyuan", ID: "hunyuan-turbos-latest", DisplayName: "Hunyuan TurboS (腾讯混元)"},
+	// --- Tencent Hunyuan (OpenAI-compatible) ---
+	{Provider: "hunyuan", ID: "hunyuan-turbos-latest", DisplayName: "Hunyuan TurboS (Tencent Hunyuan)"},
 
 	// --- Ollama (local, no API key) ---
 	{Provider: "ollama", ID: "ollama/llama3.3", DisplayName: "Llama 3.3 (local Ollama)"},

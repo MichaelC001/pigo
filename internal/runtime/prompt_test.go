@@ -180,7 +180,7 @@ func TestBuildSystemPromptReadErrorSurfaces(t *testing.T) {
 }
 
 // TestBuildSystemPromptBaseInstructionOverride verifies a non-empty
-// BaseInstruction replaces the default coding-assistant prompt (对标 pi 的
+// BaseInstruction replaces the default coding-assistant prompt (mirrors pi's
 // --system-prompt) while the environment block still follows it.
 func TestBuildSystemPromptBaseInstructionOverride(t *testing.T) {
 	got, err := BuildSystemPrompt(PromptConfig{

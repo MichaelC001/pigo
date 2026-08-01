@@ -43,7 +43,7 @@ type PromptConfig struct {
 	Root string
 	// AppendInstructions are appended verbatim to the end of the assembled
 	// prompt, in order, each preceded by a blank line. This is the sink for
-	// --append-system-prompt (对标 pi): extra guidance layered after the base
+	// --append-system-prompt (mirrors pi): extra guidance layered after the base
 	// instruction, environment block, and AGENTS.md. Empty entries are skipped.
 	AppendInstructions []string
 	// Now supplies the timestamp for the environment block. When nil, time.Now
@@ -53,7 +53,7 @@ type PromptConfig struct {
 	// for tests so AGENTS.md layout can be faked without touching disk.
 	ReadFile func(path string) ([]byte, error)
 	// Skills are the model-invocable skills to advertise in an <available_skills>
-	// block at the end of the prompt (对标 pi 的渐进式披露). Only their
+	// block at the end of the prompt (mirrors pi's progressive disclosure). Only their
 	// name/description/location are injected; the model loads a skill's body with
 	// the read tool on demand. Skills flagged disable-model-invocation are
 	// filtered out by FormatSkillsForPrompt. Empty means no skills block.

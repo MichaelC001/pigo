@@ -30,7 +30,7 @@ func TestRenderBannerShowsVersion(t *testing.T) {
 	if !strings.Contains(out, "Version") || !strings.Contains(out, "v0.3.1") {
 		t.Errorf("banner missing Version row: %q", out)
 	}
-	if strings.Contains(out, "运行 pigo update 升级") {
+	if strings.Contains(out, "Run pigo update to upgrade") {
 		t.Error("banner should not show upgrade hint with empty cache")
 	}
 }
@@ -41,7 +41,7 @@ func TestRenderBannerDevNoHint(t *testing.T) {
 	if !strings.Contains(out, "dev") {
 		t.Errorf("banner should show dev version: %q", out)
 	}
-	if strings.Contains(out, "运行 pigo update 升级") {
+	if strings.Contains(out, "Run pigo update to upgrade") {
 		t.Error("dev build must not show an upgrade hint")
 	}
 }
@@ -52,7 +52,7 @@ func TestRenderBannerUpgradeHint(t *testing.T) {
 	if !strings.Contains(out, "v0.4.0") {
 		t.Errorf("banner should highlight newer version v0.4.0: %q", out)
 	}
-	if !strings.Contains(out, "运行 pigo update 升级") {
+	if !strings.Contains(out, "Run pigo update to upgrade") {
 		t.Errorf("banner should show upgrade hint: %q", out)
 	}
 }
@@ -60,7 +60,7 @@ func TestRenderBannerUpgradeHint(t *testing.T) {
 func TestRenderBannerUpToDate(t *testing.T) {
 	writeUpdateCache(t, "v0.3.1")
 	out := renderBanner(DefaultTheme(), Options{Version: "v0.3.1"}, "/tmp/proj")
-	if strings.Contains(out, "运行 pigo update 升级") {
+	if strings.Contains(out, "Run pigo update to upgrade") {
 		t.Error("up-to-date build must not show an upgrade hint")
 	}
 }

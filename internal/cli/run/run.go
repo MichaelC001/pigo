@@ -47,9 +47,9 @@ type Env struct {
 // SetupEnv resolves the provider for model/baseURL, builds the tool set rooted
 // at the working directory, and constructs the system prompt — the setup the
 // REPL and headless drivers both need. systemPrompt, when non-empty, replaces
-// the default base instruction (对标 pi 的 --system-prompt); appendSystemPrompt
+// the default base instruction (mirrors pi's --system-prompt); appendSystemPrompt
 // entries are each resolved (a path to an existing file is read, otherwise the
-// value is literal text) and layered onto the end of the prompt (对标 pi 的
+// value is literal text) and layered onto the end of the prompt (mirrors pi's
 // --append-system-prompt). apiKey is the resolved credential (CLI --api-key or
 // config.toml) used as the override for sub-agent credential resolution so
 // dispatched task children authenticate the same way the parent does. It
@@ -112,7 +112,7 @@ func SetupEnv(model, baseURL, protocol, providerName, apiKey string, noTools, no
 		fmt.Fprintf(os.Stderr, "pigo: skills: %v\n", err)
 	}
 	// The model can only load a skill's body when the read tool is present, so
-	// advertise skills in the prompt only then (对标 pi 的 selectedTools check).
+	// advertise skills in the prompt only then (mirrors pi's selectedTools check).
 	sysPrompt, err := runtime.BuildSystemPrompt(runtime.PromptConfig{
 		BaseInstruction:    systemPrompt,
 		WorkingDir:         cwd,

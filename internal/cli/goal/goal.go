@@ -1,4 +1,4 @@
-// This file implements the /goal command (对标 pi-goal / Claude Code's goal
+// This file implements the /goal command (mirrors pi-goal / Claude Code's goal
 // mode): given a high-level objective, pigo runs the agent autonomously —
 // re-prompting it turn after turn from the loop's follow-up seam — until the
 // model declares the goal done (goal_complete), reports a true impasse
@@ -38,11 +38,11 @@ import (
 )
 
 // goalMaxAutomaticTurns caps how many autonomous continuations a single /goal
-// run will issue before pausing, a runaway guard (对标 pi-goal's automaticTurns).
+// run will issue before pausing, a runaway guard (mirrors pi-goal's automaticTurns).
 const goalMaxAutomaticTurns = 25
 
 // goalMaxNoProgress pauses the run after this many consecutive tool-free
-// continuations, so a model looping without acting cannot spin forever (对标
+// continuations, so a model looping without acting cannot spin forever (mirrors
 // pi-goal's noProgressTurns).
 const goalMaxNoProgress = 3
 

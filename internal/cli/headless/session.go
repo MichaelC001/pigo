@@ -12,7 +12,7 @@
 // from a prior session (and re-anchors the branch leaf), a fresh run creates a
 // new session, and in both cases the run's newly produced messages are appended
 // after it completes. The session id is threaded into the run so it appears in
-// the first stream-json event (对标 pi/Claude Code) and can be passed back via
+// the first stream-json event (mirrors pi/Claude Code) and can be passed back via
 // --resume to continue the run.
 package headless
 

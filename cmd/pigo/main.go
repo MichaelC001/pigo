@@ -55,7 +55,7 @@ type cliOptions struct {
 	apiKey   string
 	protocol string
 	// provider, when non-empty, selects a built-in provider by name from the
-	// registry (对标 pi 的 provider selection): provider.ResolveProvider then builds the
+	// registry (mirrors pi's provider selection): provider.ResolveProvider then builds the
 	// matching wire driver using the provider's default base URL, protocol, and
 	// API-key env var, ignoring the model-id heuristics.
 	provider     string
@@ -64,18 +64,18 @@ type cliOptions struct {
 	listSessions bool
 	resumeID     string
 	continueLast bool
-	// approve grants the launch directory session-level trust up front (对标 pi
-	// 的 --approve/-a): the first-launch trust prompt is skipped and side-effect
+	// approve grants the launch directory session-level trust up front (mirrors pi's
+	// --approve/-a): the first-launch trust prompt is skipped and side-effect
 	// tools (bash/write/edit) run without per-call confirmation for this run.
 	approve bool
-	// noSkills disables skill discovery (对标 pi 的 --no-skills): skills under
+	// noSkills disables skill discovery (mirrors pi's --no-skills): skills under
 	// ~/.agents/skills are not loaded as /skill-name commands.
 	noSkills bool
 	// systemPrompt, when non-empty, replaces the default coding-assistant base
-	// instruction (对标 pi 的 --system-prompt). The environment block and
+	// instruction (mirrors pi's --system-prompt). The environment block and
 	// AGENTS.md injection still apply on top of it.
 	systemPrompt string
-	// appendSystemPrompt holds --append-system-prompt values (对标 pi, repeatable):
+	// appendSystemPrompt holds --append-system-prompt values (mirrors pi, repeatable):
 	// each is a path to a file whose contents are appended, or literal text when
 	// it is not an existing file. Appended after the base prompt and AGENTS.md.
 	appendSystemPrompt []string
@@ -107,7 +107,7 @@ type cliOptions struct {
 	// repl.Run rather than launching tui.Run.
 	noTUI bool
 	// cwd, when non-empty, is the working directory pigo switches to before doing
-	// anything else (对标 Claude Agent SDK 的 cwd option / git -C). Every
+	// anything else (matches the Claude Agent SDK's cwd option / git -C). Every
 	// cwd-derived resolution — built-in tool file roots, project trust, hooks
 	// project dir, .pigo/ project config, git info, the status-bar path — reads
 	// os.Getwd(), so a single os.Chdir here makes all of them operate in the
@@ -148,13 +148,13 @@ func main() {
 	flag.BoolVarP(&opts.approve, "approve", "a", false, "trust the working directory for this run: skip the first-launch trust prompt and run side-effect tools without per-call confirmation")
 	flag.BoolVar(&opts.noSkills, "no-skills", false, "disable skill discovery (do not load skills under ~/.agents/skills as /skill-name commands)")
 	flag.BoolVar(&opts.noPromptTemplates, "no-prompt-templates", false, "disable prompt-template discovery (do not load ~/.pigo/{commands,prompts}, .pigo/prompts, config prompts, or --prompt-template); built-in slash commands are unaffected")
-	flag.StringVar(&opts.systemPrompt, "system-prompt", "", "system prompt to use instead of the default coding-assistant prompt (对标 pi --system-prompt)")
-	flag.StringArrayVar(&opts.appendSystemPrompt, "append-system-prompt", nil, "append text or file contents to the system prompt; repeatable (对标 pi --append-system-prompt)")
-	flag.StringArrayVar(&opts.promptTemplates, "prompt-template", nil, "load a prompt template from a file or directory (non-recursive); repeatable (对标 pi --prompt-template)")
+	flag.StringVar(&opts.systemPrompt, "system-prompt", "", "system prompt to use instead of the default coding-assistant prompt (mirrors pi --system-prompt)")
+	flag.StringArrayVar(&opts.appendSystemPrompt, "append-system-prompt", nil, "append text or file contents to the system prompt; repeatable (mirrors pi --append-system-prompt)")
+	flag.StringArrayVar(&opts.promptTemplates, "prompt-template", nil, "load a prompt template from a file or directory (non-recursive); repeatable (mirrors pi --prompt-template)")
 	flag.StringVar(&opts.thinkingLevel, "thinking-level", "", "reasoning effort: off|minimal|low|medium|high|xhigh (overrides PIGO_THINKING_LEVEL and config; default medium)")
 	flag.BoolVar(&opts.subagentRPC, "subagent-rpc", false, "internal: run as a process-isolated sub-agent JSON-RPC server over stdio (US-019)")
-	flag.BoolVar(&opts.noTUI, "no-tui", false, "使用行式 REPL 而非全屏 TUI")
-	flag.StringVarP(&opts.cwd, "cwd", "C", "", "run as if pigo was started in this directory (对标 Claude Agent SDK 的 cwd; like git -C): tool file access, trust, hooks, and project config all resolve against it")
+	flag.BoolVar(&opts.noTUI, "no-tui", false, "use the line-based REPL instead of the full-screen TUI")
+	flag.StringVarP(&opts.cwd, "cwd", "C", "", "run as if pigo was started in this directory (matches the Claude Agent SDK's cwd; like git -C): tool file access, trust, hooks, and project config all resolve against it")
 	flag.BoolVarP(&opts.showVersion, "version", "v", false, "print version information and exit")
 	// Extend the default pflag usage with a "Supported providers" block so
 	// `--help` documents the values accepted by --provider (name → env var →

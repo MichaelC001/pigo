@@ -42,7 +42,7 @@ func saveSession(t *testing.T, store *session.Store, msgs agentcore.MessageList)
 func TestResumeSeedsTranscript(t *testing.T) {
 	store := newTestStore(t)
 	id := saveSession(t, store, agentcore.MessageList{
-		agentcore.UserMessage{RoleField: agentcore.RoleUser, Content: agentcore.ContentList{agentcore.NewTextContent("你好，世界")}},
+		agentcore.UserMessage{RoleField: agentcore.RoleUser, Content: agentcore.ContentList{agentcore.NewTextContent("hello, world")}},
 		agentcore.AssistantMessage{RoleField: agentcore.RoleAssistant, Content: agentcore.ContentList{agentcore.NewTextContent("hello back")}},
 		agentcore.UserMessage{RoleField: agentcore.RoleUser, Content: agentcore.ContentList{agentcore.NewTextContent("second question")}},
 	})
@@ -66,7 +66,7 @@ func TestResumeSeedsTranscript(t *testing.T) {
 	tr := newTranscript(DefaultTheme())
 	seedTranscript(&tr, history)
 
-	wantTexts := []string{"你好，世界", "hello back", "second question"}
+	wantTexts := []string{"hello, world", "hello back", "second question"}
 	if len(tr.blocks) != len(wantTexts) {
 		t.Fatalf("transcript blocks = %d, want %d", len(tr.blocks), len(wantTexts))
 	}

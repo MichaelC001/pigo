@@ -1,6 +1,6 @@
 package provider
 
-// Tests for the preset provider/model catalog (对标 pi agent's preset picker):
+// Tests for the preset provider/model catalog (mirrors pi agent's preset picker):
 // LookupPreset resolves a catalog id to its owning provider, PresetsByProvider
 // groups by provider, and every preset must name a provider that has a known
 // credential env var (or be the local, keyless Ollama).

@@ -2,7 +2,7 @@ package runtime
 
 // Tests for sub-agent orchestration, skills, and slash-commands (US-027/028/029,
 // #45). The sub-agent integration test drives the flagship parent→child→parent
-// path through the faux provider seam (对标 faux_provider_test.go): the parent
+// path through the faux provider seam (mirrors faux_provider_test.go): the parent
 // loop calls a sub-agent tool, the child runs its own scripted loop, and the
 // child's final text is fed back as the parent's tool result. Skills and
 // slash-commands get focused load/parse unit tests.
@@ -23,7 +23,7 @@ import (
 // TestSubAgentParentChildParent is acceptance-critical: a parent agent loop
 // delegates to a sub-agent via a tool call, the child runs an independent loop
 // with its own context and provider, and the child's final assistant text is
-// returned to the parent as the tool result (父→子→父). Both loops are driven by
+// returned to the parent as the tool result (parent->child->parent). Both loops are driven by
 // faux providers over the real StreamFnFromProvider seam.
 func TestSubAgentParentChildParent(t *testing.T) {
 	// Child provider: a single scripted turn producing the delegated answer.

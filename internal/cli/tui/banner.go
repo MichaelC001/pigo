@@ -76,12 +76,12 @@ func renderBanner(theme Theme, opts Options, cwd string) string {
 			newVer := lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true).Render(latest)
 			rows[0][1] = rows[0][1] + "  →  " + newVer
 			upgradeHint = label.Render(strings.Repeat(" ", 11)) +
-				lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("运行 pigo update 升级")
+				lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("Run pigo update to upgrade")
 		}
 	}
 
 	var info strings.Builder
-	info.WriteString(title.Render("pigo") + "  " + theme.System.Render("终端 AI 编程助手") + "\n\n")
+	info.WriteString(title.Render("pigo") + "  " + theme.System.Render("Terminal AI coding assistant") + "\n\n")
 	for i, r := range rows {
 		if i > 0 {
 			info.WriteByte('\n')

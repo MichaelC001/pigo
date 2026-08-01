@@ -40,7 +40,7 @@ type PromptTemplateSources struct {
 	// dir), loaded at the project tier only when ProjectTrusted is true.
 	ProjectDir string
 	// ProjectTrusted reports whether the working directory is trusted; project
-	// templates load only then (对标 pi: project prompts after the project is
+	// templates load only then (mirrors pi: project prompts after the project is
 	// trusted).
 	ProjectTrusted bool
 }
@@ -81,7 +81,7 @@ func LoadPromptPaths(paths []string) []runtime.SlashCommand {
 // (/model, /help) bound to live, user declarative templates loaded from
 // ~/.pigo/commands (or $PIGO_HOME/commands), plugin-declared commands from the
 // loaded Manager, plus the pre-loaded skills — each surfaced as a "/skill-name"
-// command (对标 Claude Code's /skill invocation). A missing directory is not an
+// command (mirrors Claude Code's /skill invocation). A missing directory is not an
 // error. Names that collide with a built-in are shadowed (the built-in wins) and
 // reported on stderr. The skills slice is loaded once by setupAgentEnv (empty
 // under --no-skills), so no /skill-name commands are registered when it is
@@ -126,7 +126,7 @@ func BuildSlashRegistry(live *cli.LiveConfig, skills []*runtime.Skill, mgr *plug
 			reg.AddCLI(c)
 		}
 		// Project-tier templates from .pigo/prompts in the working directory,
-		// loaded only when the project is trusted (对标 pi). A missing dir is
+		// loaded only when the project is trusted (mirrors pi). A missing dir is
 		// not an error. Overrides global/settings/CLI (project tier is higher).
 		if srcs.ProjectTrusted && srcs.ProjectDir != "" {
 			cmds, err := runtime.LoadUserCommandsDir(srcs.ProjectDir)

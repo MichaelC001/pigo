@@ -40,7 +40,7 @@ type FileConfig struct {
 	Approve       bool   `toml:"approve"`
 	SystemPrompt  string `toml:"system_prompt"`
 	// Prompts is the config.toml `prompts` array: paths (files or dirs) to load
-	// prompt templates from at the settings tier (对标 pi's settings prompts).
+	// prompt templates from at the settings tier (mirrors pi's settings prompts).
 	Prompts []string `toml:"prompts"`
 }
 
