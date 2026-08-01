@@ -32,6 +32,7 @@ pigo 可以读写文件、执行命令、检索代码、抓取网页，并借助
 - [插件](#插件)
 - [Hooks](#hooks)
 - [包管理](#包管理)
+- [自更新](#自更新)
 - [发布release](#发布release)
 - [目录与环境变量](#目录与环境变量)
 - [安全说明](#安全说明)
@@ -51,6 +52,7 @@ pigo 可以读写文件、执行命令、检索代码、抓取网页，并借助
 - **提示词模板**：`~/.pigo/prompts`、项目 `.pigo/prompts`（受信任时）、config `prompts`、`--prompt-template` 下的可复用 `/name` 模板，支持 `$1`/`$@`/`${1:-default}`/`${@:N}` 等参数语法。
 - **上下文自动压缩**：接近上下文窗口上限时自动摘要，亦可 `/compact` 手动触发。
 - **包管理**：`pigo install npm:<pkg>` 安装 pi 生态的 extension / skill / prompt / theme。
+- **自更新**：无参 `pigo update` 将 pigo 二进制升级到最新 GitHub Release；进入 TUI 时后台检查新版本并在横幅提示。
 
 ---
 
@@ -576,15 +578,31 @@ pigo install npm:@scope/name@1.2.3
 # 列出已安装的包
 pigo list
 
-# 更新（无参数则更新全部）
-pigo update
+# 更新指定包到 npm 最新版本（可多个）
 pigo update pi-mcp-adapter
 
 # 卸载
 pigo uninstall pi-mcp-adapter
 ```
 
+> 注意：不带包名的 `pigo update`（以及 `pigo update --check` 等仅带标志的调用）**不再更新全部已装包**，而是自更新 pigo 二进制本身（见下文「自更新」）。更新全部包请逐个执行 `pigo update <包名>`。
+
 包类型（`extension` / `skill` / `prompt` / `theme`）会分别分发到对应目录，安装记录写入 lockfile。
+
+---
+
+## 自更新
+
+`pigo` 可以把自身二进制升级到 GitHub Release 上的最新版本。无参数的 `pigo update`（或仅带标志的调用，如 `pigo update --check`）会走自更新路径；带包名时才是包更新。
+
+```bash
+# 检查并自更新 pigo 二进制到最新 Release
+pigo update
+```
+
+- 与包更新的路由区分完全由参数决定：任一不以 `-` 开头的参数视为包名 → 包更新；否则（无参数或仅标志）→ 自更新。
+- 进入交互式 TUI 时，pigo 会在后台异步检查最新 Release（24h 缓存于 `$PIGO_HOME/update-check.json`），有新版本时在启动横幅提示 `Run pigo update to upgrade`；`dev` 构建不检查。
+- 自更新会下载对应平台的最新二进制并原地替换当前可执行文件；若目标路径需要更高权限，会提示改用 `sudo` 重试。
 
 ---
 

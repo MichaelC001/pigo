@@ -116,6 +116,7 @@
         <a href="#pkg-list">list</a>
         <a href="#pkg-uninstall">uninstall</a>
         <a href="#pkg-update">update</a>
+        <a href="#selfupdate"><span class="zh">自更新</span><span class="en">Self-update</span></a>
         <a class="group zh">参考</a><a class="group en">Reference</a>
         <a href="#layout"><span class="zh">目录与环境变量</span><span class="en">Paths &amp; Env Vars</span></a>
         <a href="#faq"><span class="zh">常见问题</span><span class="en">FAQ</span></a>
@@ -411,21 +412,36 @@ go install github.com/smallnest/pigo/cmd/pigo@latest</code></pre>
         <p class="zh">把已安装的包更新到 npm 上的最新版本。</p>
         <p class="en">Update installed packages to the latest version on npm.</p>
         <pre><code><span class="c"># <span class="zh">更新指定包（可多个）</span><span class="en">update named packages (one or more)</span></span>
-<span class="p">pigo</span> update pi-mcp-adapter
-
-<span class="c"># <span class="zh">不带包名：遍历更新全部已安装包</span><span class="en">no name: update every installed package</span></span>
-<span class="p">pigo</span> update</code></pre>
+<span class="p">pigo</span> update pi-mcp-adapter</code></pre>
         <ul class="zh">
           <li>先拉取并分类最新版本，仅当版本与已装不同才「卸旧文件 → 重新分发 → 更新 lockfile 版本」。</li>
           <li>已是最新版时打印 <code>&lt;name&gt; is up to date</code>，不做无谓改动。</li>
           <li><strong>失败安全</strong>：网络或分类失败发生在任何删除之前，原安装保持不变，不会留下损坏状态。</li>
-          <li>无参 <code>update</code> 逐包尽力而为，任一失败则退出码非零。</li>
+          <li>多包更新逐包尽力而为，任一失败则退出码非零。</li>
+          <li><strong>无参 <code>pigo update</code>（及仅带标志的调用）不再更新全部包，而是自更新 pigo 二进制</strong>（见下文「自更新」）。</li>
         </ul>
         <ul class="en">
           <li>Fetches and classifies the latest first; only when the version differs does it "remove old files → redistribute → bump the lockfile version".</li>
           <li>Already current prints <code>&lt;name&gt; is up to date</code> and makes no changes.</li>
           <li><strong>Fail-safe</strong>: network or classification failures happen before any deletion, so the existing install stays intact.</li>
-          <li>Argument-less <code>update</code> is best-effort per package; any failure yields a non-zero exit code.</li>
+          <li>Multi-package updates are best-effort per package; any failure yields a non-zero exit code.</li>
+          <li><strong>A no-argument <code>pigo update</code> (or a flags-only call) no longer updates every package — it self-updates the pigo binary</strong> (see "Self-update" below).</li>
+        </ul>
+      </section>
+
+      <section id="selfupdate">
+        <h2><span class="zh">自更新</span><span class="en">Self-update</span></h2>
+        <p class="zh">把 pigo 二进制升级到 GitHub Release 上的最新版本。参数决定路由：任一不以 <code>-</code> 开头的参数视为包名 → 走包更新；否则（无参数或仅带标志，如 <code>--check</code>）→ 走自更新。</p>
+        <p class="en">Upgrade the pigo binary to the latest GitHub Release. Arguments decide the route: any argument not starting with <code>-</code> is treated as a package name → package update; otherwise (no args, or flags-only like <code>--check</code>) → self-update.</p>
+        <pre><code><span class="c"># <span class="zh">检查并自更新 pigo 二进制到最新 Release</span><span class="en">check &amp; self-update the pigo binary to the latest Release</span></span>
+<span class="p">pigo</span> update</code></pre>
+        <ul class="zh">
+          <li>下载对应平台的最新二进制并原地替换当前可执行文件；目标路径需要更高权限时提示改用 <code>sudo</code> 重试。</li>
+          <li>进入交互式 TUI 时后台异步检查最新 Release（24h 缓存于 <code>$PIGO_HOME/update-check.json</code>），有新版时在启动横幅提示 <code>Run pigo update to upgrade</code>；<code>dev</code> 构建不检查。</li>
+        </ul>
+        <ul class="en">
+          <li>Downloads the latest binary for your platform and replaces the current executable in place; if the target path needs elevated permissions, it hints to retry with <code>sudo</code>.</li>
+          <li>On entering the interactive TUI, it checks the latest Release in the background (cached 24h at <code>$PIGO_HOME/update-check.json</code>) and shows <code>Run pigo update to upgrade</code> in the startup banner when a newer version exists; <code>dev</code> builds skip the check.</li>
         </ul>
       </section>
 
