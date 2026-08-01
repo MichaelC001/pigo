@@ -89,6 +89,23 @@ func TestAutoCompactionFiresOnThreshold(t *testing.T) {
 	if ce == nil {
 		t.Fatalf("expected a CompactionEvent, got events %+v", events)
 	}
+	// A CompactionStartEvent must precede the CompactionEvent so a front-end can
+	// show an in-progress indicator while summarization is in flight.
+	var startedBefore bool
+	for _, ev := range events {
+		if _, ok := ev.(agentcore.CompactionStartEvent); ok {
+			startedBefore = true
+		}
+		if _, ok := ev.(agentcore.CompactionEvent); ok {
+			if !startedBefore {
+				t.Errorf("CompactionStartEvent must be emitted before CompactionEvent")
+			}
+			break
+		}
+	}
+	if !startedBefore {
+		t.Errorf("expected a CompactionStartEvent, got events %+v", events)
+	}
 	if ce.ErrorMessage != "" {
 		t.Fatalf("compaction should have succeeded, got error %q", ce.ErrorMessage)
 	}

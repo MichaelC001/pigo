@@ -53,7 +53,27 @@ func TestSpinnerViewStats(t *testing.T) {
 	}
 }
 
-// TestSpinnerViewOmitsEmptyStats verifies the token stat is hidden before any
+// TestSpinnerPinOverridesVerb verifies a pinned label replaces the random verb
+// and survives verb re-rolls, and that unpin restores the cycling verb.
+func TestSpinnerPinOverridesVerb(t *testing.T) {
+	s := newSpinner(DefaultTheme())
+	s.begin(time.Now(), "")
+	s.pin("Compacting conversation")
+
+	// Advance well past the re-roll interval: a pinned label must not change.
+	for i := 0; i < verbRerollFrames*2; i++ {
+		s.advance()
+	}
+	view := stripANSI(s.view(120))
+	if !strings.Contains(view, "Compacting conversation…") {
+		t.Errorf("pinned spinner view %q should show the pinned label", view)
+	}
+
+	s.unpin()
+	if got := stripANSI(s.view(120)); strings.Contains(got, "Compacting conversation") {
+		t.Errorf("after unpin, view %q should not show the pinned label", got)
+	}
+}
 // tokens stream and the effort stat is hidden with no thinking level.
 func TestSpinnerViewOmitsEmptyStats(t *testing.T) {
 	s := newSpinner(DefaultTheme())

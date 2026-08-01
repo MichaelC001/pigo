@@ -331,6 +331,9 @@ func maybeAutoCompact(ctx context.Context, agentCtx *agentcore.AgentContext, cfg
 	if !compaction.ShouldCompact(before, cfg.ContextWindow, cfg.Compaction) {
 		return
 	}
+	// Signal the start so a front-end can show an in-progress indicator while the
+	// summarization request (an LLM call that blocks the loop) is in flight.
+	_ = emit(agentcore.CompactionStartEvent{Reason: "threshold", TokensBefore: before})
 	res, err := runCompaction(ctx, agentCtx.Messages, cfg)
 	kept := len(agentCtx.Messages)
 	if err != nil {

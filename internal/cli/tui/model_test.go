@@ -321,6 +321,28 @@ func TestModelSubagentPanelLifecycle(t *testing.T) {
 	}
 }
 
+// TestModelCompactionIndicator verifies compactionStartMsg pins the spinner to
+// "Compacting conversation…" while summarization runs, and compactionMsg clears
+// the label and records the "(context compacted)" system note.
+func TestModelCompactionIndicator(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 80, Height: 20})
+	m.running = true
+	m.spinner.begin(time.Now(), "")
+
+	m = apply(t, m, compactionStartMsg{})
+	if view := stripANSI(m.spinner.view(120)); !strings.Contains(view, "Compacting conversation…") {
+		t.Errorf("spinner view %q should show the compaction label", view)
+	}
+
+	m = apply(t, m, compactionMsg{})
+	if m.spinner.pinned != "" {
+		t.Errorf("compactionMsg should unpin the spinner, got %q", m.spinner.pinned)
+	}
+	if joined := strings.Join(blockTexts(m.transcript), "\n"); !strings.Contains(joined, "(context compacted)") {
+		t.Errorf("transcript should note the compaction, got:\n%s", joined)
+	}
+}
+
 // TestModelSubagentPanelHeightReservation verifies the panel's rows are reserved
 // out of the transcript height so the total shell height is unchanged whether or
 // not sub-agents are active.

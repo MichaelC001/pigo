@@ -42,6 +42,7 @@ type spinner struct {
 	start    time.Time
 	chars    int    // runes streamed this run (the token estimate divides this)
 	thinking string // thinking-effort label, e.g. "medium"; "" hides that stat
+	pinned   string // when set, overrides the random verb and stops re-rolling
 }
 
 // newSpinner builds an idle spinner bound to the theme.
@@ -59,7 +60,16 @@ func (s *spinner) begin(now time.Time, thinking string) {
 	s.chars = 0
 	s.thinking = thinking
 	s.verb = randomVerb()
+	s.pinned = ""
 }
+
+// pin fixes the spinner label to a specific phrase (e.g. "Compacting
+// conversation") and stops verb re-rolling until unpin, so a long-running phase
+// reads as one steady message rather than cycling words.
+func (s *spinner) pin(label string) { s.pinned = label }
+
+// unpin restores the normal cycling verb after a pinned phase ends.
+func (s *spinner) unpin() { s.pinned = "" }
 
 // stop parks the spinner when a run ends so view() renders nothing.
 func (s *spinner) stop() { s.running = false }
@@ -68,7 +78,7 @@ func (s *spinner) stop() { s.running = false }
 // long run does not sit on one word.
 func (s *spinner) advance() {
 	s.frame++
-	if s.frame%verbRerollFrames == 0 {
+	if s.pinned == "" && s.frame%verbRerollFrames == 0 {
 		s.verb = randomVerb()
 	}
 }
@@ -88,7 +98,11 @@ func (s spinner) view(width int) string {
 		return ""
 	}
 	glyph := spinnerFrames[s.frame%len(spinnerFrames)]
-	head := s.theme.Spinner.Render(glyph + " " + s.verb + "…")
+	verb := s.verb
+	if s.pinned != "" {
+		verb = s.pinned
+	}
+	head := s.theme.Spinner.Render(glyph + " " + verb + "…")
 
 	var stats strings.Builder
 	fmt.Fprintf(&stats, "%s", formatElapsed(time.Since(s.start)))

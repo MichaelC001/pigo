@@ -226,6 +226,9 @@ func eventEnvelope(ev agentcore.AgentEvent) map[string]any {
 		env["toolCallId"] = e.ToolCallID
 		env["toolName"] = e.ToolName
 		env["isError"] = e.IsError
+	case agentcore.CompactionStartEvent:
+		env["reason"] = e.Reason
+		env["tokensBefore"] = e.TokensBefore
 	case agentcore.CompactionEvent:
 		env["reason"] = e.Reason
 		env["tokensBefore"] = e.TokensBefore

@@ -566,6 +566,21 @@ func streamRun(ctx context.Context, out io.Writer, deps replDeps, prompt string)
 			if hookEvent != nil {
 				hookEvent(ev)
 			}
+			// Surface auto-compaction progress: a "Compacting conversation…" line
+			// when it starts, then a token summary when it finishes. Manual
+			// /compact prints its own summary via runManualCompact (it bypasses
+			// the loop), so only threshold/overflow events reach here.
+			switch e := ev.(type) {
+			case agentcore.CompactionStartEvent:
+				fmt.Fprintln(out, ui.Colorize(ui.Enabled(), ui.Dim, "Compacting conversation…"))
+			case agentcore.CompactionEvent:
+				if e.ErrorMessage != "" {
+					fmt.Fprintf(out, "compaction failed: %s\n", e.ErrorMessage)
+				} else {
+					fmt.Fprintf(out, "compacted: %d → %d tokens, summarized %d messages, kept %d\n",
+						e.TokensBefore, e.TokensAfter, e.SummarizedCount, e.KeptCount)
+				}
+			}
 		},
 		OnText: func(delta string) {
 			reply.WriteString(delta)
@@ -923,6 +938,7 @@ func runManualCompact(out io.Writer, deps replDeps) {
 	if deps.creds != nil {
 		scfg.APIKey = deps.creds.GetAPIKey(context.Background(), deps.live.ProviderName)
 	}
+	fmt.Fprintln(out, ui.Colorize(ui.Enabled(), ui.Dim, "Compacting conversation…"))
 	res, err := compaction.Compact(context.Background(), stream, model, msgs, settings, -1, nil, "", scfg)
 	if err != nil {
 		fmt.Fprintf(out, "compaction failed: %v (context left unchanged)\n", err)

@@ -23,6 +23,7 @@ const (
 	EventToolExecutionUpdate = "tool_execution_update"
 	EventToolExecutionEnd    = "tool_execution_end"
 	EventCompaction          = "compaction"
+	EventCompactionStart     = "compaction_start"
 	EventTelemetry           = "telemetry"
 	EventSubAgentProgress    = "subagent_progress"
 )
@@ -113,6 +114,17 @@ type CompactionEvent struct {
 	ErrorMessage string
 }
 
+// CompactionStartEvent is emitted immediately before the loop runs compaction,
+// so a front-end can show an in-progress "Compacting conversation…" indicator
+// while the summarization request is in flight. The matching CompactionEvent is
+// emitted when it completes (or fails). Reason mirrors CompactionEvent.Reason.
+type CompactionStartEvent struct {
+	// Reason is why compaction is running: "manual", "threshold", or "overflow".
+	Reason string
+	// TokensBefore is the estimated context tokens that triggered compaction.
+	TokensBefore int
+}
+
 // SubAgentProgressEvent carries structured progress from a running sub-agent
 // (dispatched by the task tool). It is reported at the sub-agent's tool
 // execution / turn boundaries so a TUI (multi-line status panel) or headless
@@ -185,6 +197,7 @@ func (ToolExecutionStartEvent) isAgentEvent()  {}
 func (ToolExecutionUpdateEvent) isAgentEvent() {}
 func (ToolExecutionEndEvent) isAgentEvent()    {}
 func (CompactionEvent) isAgentEvent()          {}
+func (CompactionStartEvent) isAgentEvent()     {}
 func (TelemetryEvent) isAgentEvent()           {}
 func (SubAgentProgressEvent) isAgentEvent()    {}
 
@@ -199,5 +212,6 @@ func (ToolExecutionStartEvent) EventType() string  { return EventToolExecutionSt
 func (ToolExecutionUpdateEvent) EventType() string { return EventToolExecutionUpdate }
 func (ToolExecutionEndEvent) EventType() string    { return EventToolExecutionEnd }
 func (CompactionEvent) EventType() string          { return EventCompaction }
+func (CompactionStartEvent) EventType() string     { return EventCompactionStart }
 func (TelemetryEvent) EventType() string           { return EventTelemetry }
 func (SubAgentProgressEvent) EventType() string    { return EventSubAgentProgress }

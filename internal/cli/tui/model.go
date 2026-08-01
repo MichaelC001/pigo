@@ -414,7 +414,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 		return m, m.pumpNext()
 
+	case compactionStartMsg:
+		m.spinner.pin("Compacting conversation")
+		return m, m.pumpNext()
+
 	case compactionMsg:
+		m.spinner.unpin()
 		if m.session != nil {
 			m.session.compacted = true
 		}
@@ -703,6 +708,13 @@ func (m Model) submitSlashSelected() (tea.Model, tea.Cmd) {
 // run; a hybrid (plugin) command shows its notifications then runs its prompt.
 // An unknown command surfaces the resolver error as a system block.
 func (m Model) runSlash(line string) (tea.Model, tea.Cmd) {
+	// /exit and /quit terminate the TUI, mirroring the REPL loop which intercepts
+	// them before slash resolution. They register only as no-op /help builtins, so
+	// without this the registry would resolve them to an empty action.
+	if line == "/exit" || line == "/quit" {
+		m.quitting = true
+		return m, tea.Quit
+	}
 	m.transcript.addUser(line)
 	m.input.Clear()
 	m.menu.close()
