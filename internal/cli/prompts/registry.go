@@ -245,26 +245,35 @@ func RegisterLiveCommands(reg *runtime.SlashRegistry, live *cli.LiveConfig) {
 		Description: "list preset providers and models you can switch to",
 		Action:      func(args string) string { return presetListing(strings.TrimSpace(args)) },
 	})
+	// thinkAction views or switches the reasoning-effort level. It backs both
+	// /think and its alias /effect, so the two commands share identical behavior.
+	thinkAction := func(args string) string {
+		lvl := strings.TrimSpace(args)
+		if lvl == "" {
+			cur := live.ThinkingLevel
+			if cur == "" {
+				cur = agentcore.ThinkingOff
+			}
+			return fmt.Sprintf("think: %s\nswitch with /think <off|minimal|low|medium|high|xhigh>", cur)
+		}
+		v, ok := validThinkingLevel(lvl)
+		if !ok {
+			return fmt.Sprintf("think: invalid level %q (want off|minimal|low|medium|high|xhigh)", lvl)
+		}
+		live.ThinkingLevel = v
+		return fmt.Sprintf("think level set to %s (applies to the next turn)", v)
+	}
 	reg.AddBuiltin(runtime.SlashCommand{
 		Name:         "think",
 		ArgumentHint: "[off|minimal|low|medium|high|xhigh]",
 		Description:  "view or switch the reasoning-effort level; takes effect on the next turn",
-		Action: func(args string) string {
-			lvl := strings.TrimSpace(args)
-			if lvl == "" {
-				cur := live.ThinkingLevel
-				if cur == "" {
-					cur = agentcore.ThinkingOff
-				}
-				return fmt.Sprintf("think: %s\nswitch with /think <off|minimal|low|medium|high|xhigh>", cur)
-			}
-			v, ok := validThinkingLevel(lvl)
-			if !ok {
-				return fmt.Sprintf("think: invalid level %q (want off|minimal|low|medium|high|xhigh)", lvl)
-			}
-			live.ThinkingLevel = v
-			return fmt.Sprintf("think level set to %s (applies to the next turn)", v)
-		},
+		Action:       thinkAction,
+	})
+	reg.AddBuiltin(runtime.SlashCommand{
+		Name:         "effect",
+		ArgumentHint: "[off|minimal|low|medium|high|xhigh]",
+		Description:  "alias of /think: view or switch the reasoning-effort level",
+		Action:       thinkAction,
 	})
 	reg.AddBuiltin(runtime.SlashCommand{
 		Name:        "help",
