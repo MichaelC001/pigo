@@ -236,6 +236,7 @@ func Run(opts Options) error {
 		persisted: len(history),
 		memoryRoot: run.MemoryRootFromTools(opts.Tools),
 		memstore:   run.MemoryStoreFromTools(opts.Tools),
+		snap:       run.SnapshotRecorderFromTools(opts.Tools),
 		notifier:  plugin.NewEventNotifier(opts.Plugins, os.Stderr),
 		goal:      agenttool.NewGoalState(),
 		telemetry: cli.NewTelemetryHolder(),

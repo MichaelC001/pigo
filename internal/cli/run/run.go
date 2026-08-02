@@ -206,10 +206,13 @@ func BuiltinTools(cwd string, disabled bool) []agentcore.AgentTool {
 	if disabled {
 		return nil
 	}
+	// A single recorder is shared by the write and edit tools so /rewind can roll
+	// back every mutation from a turn regardless of which tool made it.
+	snap := agenttool.NewFileSnapshotRecorder()
 	return []agentcore.AgentTool{
 		&agenttool.ReadTool{Root: cwd, ExtraRoots: ReadableExtraRoots()},
-		&agenttool.WriteTool{Root: cwd, ExtraRoots: ReadableExtraRoots()},
-		&agenttool.EditTool{Root: cwd, ExtraRoots: ReadableExtraRoots()},
+		&agenttool.WriteTool{Root: cwd, ExtraRoots: ReadableExtraRoots(), Snap: snap},
+		&agenttool.EditTool{Root: cwd, ExtraRoots: ReadableExtraRoots(), Snap: snap},
 		&agenttool.GrepTool{Root: cwd},
 		&agenttool.FindTool{Root: cwd},
 		&agenttool.BashTool{Dir: cwd},
@@ -316,6 +319,25 @@ func MemoryStoreFromTools(tools []agentcore.AgentTool) *memory.Store {
 	for _, t := range tools {
 		if mt, ok := t.(*agenttool.MemorySearchTool); ok && mt.Store != nil {
 			return mt.Store
+		}
+	}
+	return nil
+}
+
+// SnapshotRecorderFromTools returns the shared FileSnapshotRecorder backing the
+// run's write/edit tools, or nil when file tools are disabled (--no-tools). The
+// REPL uses it to commit a per-turn restore point and to serve /rewind.
+func SnapshotRecorderFromTools(tools []agentcore.AgentTool) *agenttool.FileSnapshotRecorder {
+	for _, t := range tools {
+		switch tool := t.(type) {
+		case *agenttool.WriteTool:
+			if tool.Snap != nil {
+				return tool.Snap
+			}
+		case *agenttool.EditTool:
+			if tool.Snap != nil {
+				return tool.Snap
+			}
 		}
 	}
 	return nil

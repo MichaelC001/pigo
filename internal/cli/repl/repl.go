@@ -149,6 +149,12 @@ type replDeps struct {
 	// memstore is the live persistent-memory Store (nil when memory is disabled).
 	// It lets /memory inspect entry counts without re-opening the database.
 	memstore *memory.Store
+
+	// snap is the shared file-snapshot recorder backing /rewind (nil under
+	// --no-tools). Each turn's write/edit mutations are captured into it; after the
+	// turn persists, commitRewindPoint groups them into a restore point tagged with
+	// the pre-turn leaf so /rewind can roll files and the conversation back together.
+	snap *agenttool.FileSnapshotRecorder
 }
 
 // replScanBufInit is the initial size of the shared input reader. A REPL user
@@ -393,6 +399,14 @@ func runREPL(in io.Reader, out io.Writer, deps replDeps) error {
 			runTree(out, &deps, line)
 			continue
 		}
+		if line == "/rewind" || strings.HasPrefix(line, "/rewind ") {
+			// /rewind is intercepted here (like /tree) because "/rewind <n>" restores
+			// files on disk AND moves the active leaf, rebuilding the shared context in
+			// place — per-run state a slash Action closure cannot reach. With no
+			// argument it lists the restore points.
+			runRewind(out, &deps, line)
+			continue
+		}
 		if line == "/export" || strings.HasPrefix(line, "/export ") {
 			// /export writes the current session to a file. It is intercepted here
 			// (not a slash Action) because it must first persist the live turn so the
@@ -514,6 +528,9 @@ func runREPL(in io.Reader, out io.Writer, deps replDeps) error {
 		// handler can interrupt this run; it is cleared when the run settles.
 		runCtx, cancel := context.WithCancel(context.Background())
 		setCancel(cancel)
+		// Capture the leaf the turn descends from before it advances, so a rewind
+		// to this turn can move the conversation back to exactly here.
+		preTurnLeaf := deps.curLeaf
 		streamRun(runCtx, out, deps, prompt)
 		cancel()
 		setCancel(nil)
@@ -524,6 +541,8 @@ func runREPL(in io.Reader, out io.Writer, deps replDeps) error {
 		deps.header.Model = deps.live.Model
 		deps.header.Provider = deps.live.ProviderName
 		cli.PersistTurn(out, &deps)
+		// Group this turn's file mutations (if any) into a rewind restore point.
+		deps.snap.Commit(preTurnLeaf, rewindLabel(prompt))
 	}
 }
 

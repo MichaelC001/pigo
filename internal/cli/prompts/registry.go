@@ -310,6 +310,7 @@ func RegisterLiveCommands(reg *runtime.SlashRegistry, live *cli.LiveConfig) {
 		{"fork", "branch from a historical message into a new session: /fork [n]"},
 		{"clone", "duplicate the current session into an independent branch"},
 		{"tree", "show the session branch tree; switch active branch: /tree [n]"},
+		{"rewind", "roll files and the conversation back to before an earlier turn: /rewind [n]"},
 		{"export", "export the session to a file: /export [path.jsonl|path.html]"},
 		{"import", "import a JSONL export as a new session: /import <path.jsonl>"},
 		{"copy", "copy the most recent assistant reply to the clipboard"},

@@ -24,6 +24,9 @@ type EditTool struct {
 	// they lie outside Root. It exists for the skills directory so the model can
 	// modify existing skills that live outside the workspace.
 	ExtraRoots []string
+	// Snap, when non-nil, records the file's prior content before it is edited so
+	// the /rewind command can roll the change back. It is shared with the write tool.
+	Snap *FileSnapshotRecorder
 }
 
 // editToolArgs is the decoded argument shape for EditTool.
@@ -114,6 +117,8 @@ func (t *EditTool) Execute(ctx context.Context, id string, args json.RawMessage,
 		updated = strings.Replace(original, a.OldString, a.NewString, 1)
 	}
 
+	// Snapshot the prior state before mutating so /rewind can restore it.
+	t.Snap.Record(full)
 	if err := os.WriteFile(full, []byte(updated), filePerm); err != nil {
 		return errorResult(fmt.Sprintf("edit: cannot write %q: %v", a.Path, err)), nil
 	}

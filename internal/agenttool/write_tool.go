@@ -24,6 +24,9 @@ type WriteTool struct {
 	// author or update skills (create a new SKILL.md, edit an existing one) that
 	// live outside the workspace.
 	ExtraRoots []string
+	// Snap, when non-nil, records the file's prior content before it is written so
+	// the /rewind command can roll the change back. It is shared with the edit tool.
+	Snap *FileSnapshotRecorder
 }
 
 // writeToolArgs is the decoded argument shape for WriteTool.
@@ -105,10 +108,11 @@ func (t *WriteTool) Execute(ctx context.Context, id string, args json.RawMessage
 		}
 	}
 
+	// Snapshot the prior state before mutating so /rewind can restore it.
+	t.Snap.Record(full)
 	if err := os.WriteFile(full, []byte(a.Content), filePerm); err != nil {
 		return errorResult(fmt.Sprintf("write: cannot write %q: %v", a.Path, err)), nil
 	}
-
 	verb := "Created"
 	if overwrote {
 		verb = "Overwrote"
