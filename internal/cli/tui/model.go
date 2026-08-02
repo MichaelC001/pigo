@@ -15,6 +15,7 @@ import (
 	"github.com/smallnest/pigo/internal/agentcore"
 	"github.com/smallnest/pigo/internal/cli"
 	"github.com/smallnest/pigo/internal/cli/memstatus"
+	"github.com/smallnest/pigo/internal/cli/status"
 	"github.com/smallnest/pigo/internal/memory"
 	"github.com/smallnest/pigo/internal/runtime"
 )
@@ -209,10 +210,12 @@ func (m Model) withSession(s *runSession, history []agentcore.Message) Model {
 	m.session = s
 	m.startRunFn = s.startRun
 	m.interruptFn = s.interrupt
-	// Rebind the registry to the session's live config so /model mutates the very
-	// config the run loop reads (buildConfig), not the throwaway one NewModel made.
+	// Rebind the registry to the session's own one (assembled against s.live, the
+	// very config the run loop reads via buildConfig) so /model mutates the live
+	// config, /trust reaches the session's trust manager (registered in
+	// newRunSessionWithStore), and /status can list skill/plugin/user commands.
 	m.live = s.live
-	m.slash = newSlashRegistry(m.opts, s.live)
+	m.slash = s.slash
 	m.transcript.addBanner(renderBanner(m.theme, m.opts, m.cwd))
 	seedTranscript(&m.transcript, history)
 	return m
@@ -350,6 +353,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case turnEndMsg:
 		m.transcript.finalizeTurn(msg.msg)
+		// Surface a failed or empty turn so a provider/API error is never silent.
+		// The loop delivers request failures (e.g. a 4xx from the endpoint) as a
+		// terminal assistant message with stopReason error/aborted via TurnEndEvent
+		// — not as the run's result error (runEndMsg.err) — so without this check
+		// the TUI would finalize an empty turn and return to the prompt with no
+		// output at all. Mirrors the headless driver and the line-based REPL.
+		switch msg.msg.StopReason {
+		case agentcore.StopReasonError:
+			reason := strings.TrimSpace(msg.msg.ErrorMessage)
+			if reason == "" {
+				reason = "the provider returned an error with no message"
+			}
+			m.transcript.addSystem("error: " + reason)
+		case agentcore.StopReasonAborted:
+			m.transcript.addSystem("error: aborted")
+		default:
+			// A turn that ends cleanly (end_turn) but produced no text, no thinking,
+			// and no tool calls means the endpoint accepted the request but sent back
+			// nothing usable (e.g. a 200 whose body was not in the wire format this
+			// protocol expects). Note it instead of showing nothing.
+			if len(msg.msg.Content) == 0 && len(msg.results) == 0 {
+				m.transcript.addSystem("note: empty response from the model (no content). " +
+					"Check that --model, --base-url and --protocol match the same provider.")
+			}
+		}
 		return m, m.pumpNext()
 
 	case toolStartMsg:
@@ -411,12 +439,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.pumpNext()
 
 	case telemetryMsg:
-		// Feed the status bar's context-usage readout, then keep the pump running.
+		// Feed the status bar's context-usage readout, and retain the event on the
+		// session's telemetry holder so /status can render the cumulative + last-run
+		// telemetry report (US-002, #292). Then keep the pump running.
 		m.statusBar.SetTelemetry(telemetryEventView{
 			util:   msg.ev.ContextUtilization,
 			window: msg.ev.ContextWindow,
 			tokens: msg.ev.ContextTokens,
 		})
+		if m.session != nil && m.session.telemetry != nil {
+			m.session.telemetry.Fold(msg.ev)
+		}
 		return m, m.pumpNext()
 
 	case compactionStartMsg:
@@ -786,6 +819,46 @@ func (m Model) runSlash(line string) (tea.Model, tea.Cmd) {
 			msgs = m.session.agentCtx.Messages
 		}
 		memstatus.RunMemory(&buf, store, memoryRoot, sessionID, msgs, window)
+		m.transcript.addSystem(strings.TrimRight(buf.String(), "\n"))
+		m.relayout()
+		return m, nil
+	}
+	// /status is intercepted before registry resolution (like /memory): it prints
+	// the shared runtime/context/project/credentials/telemetry report, which reads
+	// the session's live collaborators (live config, trust manager, telemetry
+	// holder, slash registry) that a slash Action closure (string→string) cannot
+	// reach. The rendering lives in the shared status package so the TUI and the
+	// REPL produce byte-identical output.
+	if line == "/status" || strings.HasPrefix(line, "/status ") {
+		m.transcript.addUser(line)
+		m.input.Clear()
+		m.menu.close()
+		if m.session == nil {
+			m.transcript.addSystem("(status unavailable: no active session)")
+			m.relayout()
+			return m, nil
+		}
+		var buf bytes.Buffer
+		status.RunStatus(&buf, m.session)
+		m.transcript.addSystem(strings.TrimRight(buf.String(), "\n"))
+		m.relayout()
+		return m, nil
+	}
+	// /session is intercepted before registry resolution (like /memory): it prints
+	// the conversation summary (session id, message count, estimated tokens, model/
+	// provider, created time, compaction count) from the live context — state a
+	// slash Action closure cannot reach. The rendering is shared with the REPL.
+	if line == "/session" {
+		m.transcript.addUser(line)
+		m.input.Clear()
+		m.menu.close()
+		if m.session == nil {
+			m.transcript.addSystem("(session unavailable: no active session)")
+			m.relayout()
+			return m, nil
+		}
+		var buf bytes.Buffer
+		m.session.renderSession(&buf)
 		m.transcript.addSystem(strings.TrimRight(buf.String(), "\n"))
 		m.relayout()
 		return m, nil

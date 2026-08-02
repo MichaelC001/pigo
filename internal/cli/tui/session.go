@@ -51,6 +51,23 @@ type runSession struct {
 	reminders *runtime.ReminderRegistry
 	creds     *provider.CredentialStore
 
+	// cwd is the directory pigo was launched in, captured once at session
+	// assembly. It is the trust key and the /status environment display.
+	cwd string
+	// trust persists project-trust decisions (US-018, #134). It is nil when
+	// trust is disabled (store could not be loaded / no cwd); when nil /status
+	// reports "disabled" and the trust-gated hook layer is skipped.
+	trust *trust.Manager
+	// slash is the shared slash-command registry the TUI consults exactly as the
+	// REPL does. It is assembled per-session against the live config (withSession
+	// rebinds the model's registry to this one) so /model switches reach it.
+	slash *runtime.SlashRegistry
+	// telemetry holds the retained per-run telemetry events (US-001, #291) and
+	// the cumulative accumulator that sums metrics across all runs in the
+	// session. The run loop folds each run's TelemetryEvent into it; /status
+	// reads it back through the Host contract.
+	telemetry *cli.TelemetryHolder
+
 	// memoryRoot is the persistent-memory Store root (empty when memory is
 	// disabled). It routes auto-compaction checkpoints and /rebuild recovery to
 	// <memoryRoot>/sessions/<id>/, the canonical checkpoint location.
@@ -86,6 +103,13 @@ type runSession struct {
 	// before the first run and after a run is cancelled.
 	cancelRun context.CancelFunc
 
+	// lastBtw is the /btw side thread's context from this process and
+	// lastBtwBase the background-message index it diverged from. Both are
+	// carried on the Host contract for parity with the REPL; the TUI does not
+	// run /btw today, so they stay nil/0.
+	lastBtw     *agentcore.AgentContext
+	lastBtwBase int
+
 	// remote owns the running remote-control server+bridge (remotecontrol.go),
 	// nil when /remote-control is off. buildConfig reads it to install the remote
 	// confirm seam so risky tool calls route to the paired browser while connected.
@@ -113,6 +137,10 @@ func newRunSession(opts Options) (*runSession, []agentcore.Message, error) {
 func newRunSessionWithStore(store *session.Store, opts Options) (*runSession, []agentcore.Message, error) {
 	creds := provider.NewCredentialStore(nil)
 	creds.SetOverride(opts.ProviderName, opts.APIKey)
+
+	// cwd is the launch directory, captured once: it stamps fresh sessions, is
+	// the trust key, and feeds /status's environment section and the hook layer.
+	cwd, _ := os.Getwd()
 
 	now := time.Now().UTC()
 	var (
@@ -146,7 +174,6 @@ func newRunSessionWithStore(store *session.Store, opts Options) (*runSession, []
 		// session is attributed to a project and a later /dream pass can distill it
 		// under the right scope, mirroring headless/REPL. An unresolvable cwd
 		// yields "" (session stays unattributed) rather than aborting.
-		wd, _ := os.Getwd()
 		header = session.SessionHeader{
 			ID:           session.NewID(now),
 			CreatedAt:    now,
@@ -154,7 +181,7 @@ func newRunSessionWithStore(store *session.Store, opts Options) (*runSession, []
 			Model:        opts.Model,
 			Provider:     opts.ProviderName,
 			SystemPrompt: opts.SysPrompt,
-			Cwd:          wd,
+			Cwd:          cwd,
 		}
 	}
 
@@ -168,6 +195,20 @@ func newRunSessionWithStore(store *session.Store, opts Options) (*runSession, []
 		ContextWindow: cli.DefaultContextWindow,
 	}
 
+	// Project trust (US-018, #134): load the persisted trust store for the
+	// launch directory, mirroring the REPL. A load failure (or an unresolvable
+	// cwd) is non-fatal: trust is disabled (mgr stays nil) and the TUI still
+	// runs — the store is surfaced rather than silently overwritten.
+	mgr, mgrErr := trust.NewManager(trust.DefaultPath())
+	if mgrErr != nil {
+		fmt.Fprintf(os.Stderr, "pigo: trust store unavailable, trust disabled: %v\n", mgrErr)
+		mgr = nil
+	}
+	if cwd == "" && mgr != nil {
+		fmt.Fprintf(os.Stderr, "pigo: cannot resolve working directory, trust disabled\n")
+		mgr = nil
+	}
+
 	s := &runSession{
 		store:     store,
 		header:    header,
@@ -176,20 +217,27 @@ func newRunSessionWithStore(store *session.Store, opts Options) (*runSession, []
 		reg:       run.ToolRegistry(opts.Tools),
 		reminders: run.TodoReminders(opts.Tools),
 		creds:     creds,
+		cwd:       cwd,
+		trust:     mgr,
+		slash:     newSlashRegistry(opts, live),
+		telemetry: cli.NewTelemetryHolder(),
 		curLeaf:   curLeaf,
 		persisted: len(history),
 		memoryRoot: run.MemoryRootFromTools(opts.Tools),
 		memstore:   run.MemoryStoreFromTools(opts.Tools),
 	}
+	// /trust is a per-session command (its closure captures mgr + cwd), so it is
+	// registered here rather than in newSlashRegistry. A nil mgr is a no-op.
+	trust.RegisterCommand(s.slash, mgr, cwd)
+
 	// Wire hooks uniformly with every other driver (#425): resolve the trust-gated
 	// hook set, build the dispatcher, dispatch SessionStart once, and compose the
 	// SessionEnd/PreCompact observer with the plugin notifier. Trust is granted by
 	// --approve (Options.Approve) or the shared trust store; project-layer hooks
 	// only apply when trusted (FR-14). A malformed hook layer disables hooks with a
 	// warning rather than failing the TUI launch.
-	cwd, _ := os.Getwd()
 	s.hookDeps = run.HookDeps{SessionID: header.ID, ProjectDir: cwd, WarnLog: os.Stderr}
-	trusted := opts.Approve || run.Trusted(cwd)
+	trusted := opts.Approve || (mgr != nil && mgr.IsTrusted(cwd))
 	var baseOnEvent func(agentcore.AgentEvent)
 	if n := plugin.NewEventNotifier(opts.Plugins, os.Stderr); n != nil {
 		baseOnEvent = n.Handle

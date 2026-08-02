@@ -56,6 +56,93 @@ func TestTranscriptStreamingConcat(t *testing.T) {
 	}
 }
 
+// TestTranscriptSurfacesTurnError verifies a turn that ends with stopReason
+// error surfaces the provider's error message as a system block rather than
+// finalizing an empty turn and returning silently to the prompt. The loop
+// delivers request failures (e.g. a 4xx) this way — as a terminal assistant
+// message via TurnEndEvent, not as the run's result error — so without the
+// StopReason check in the turnEndMsg handler the TUI would show nothing at all.
+func TestTranscriptSurfacesTurnError(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 40, Height: 12})
+
+	m = apply(t, m, turnEndMsg{msg: agentcore.AssistantMessage{
+		StopReason:   agentcore.StopReasonError,
+		ErrorMessage: "upstream 401: 无效的令牌",
+	}})
+
+	var sys string
+	for _, b := range m.transcript.blocks {
+		if b.role == roleSystem {
+			sys = b.text
+		}
+	}
+	if !strings.Contains(sys, "error:") || !strings.Contains(sys, "upstream 401: 无效的令牌") {
+		t.Errorf("turn error not surfaced; system block = %q", sys)
+	}
+	if content := stripANSI(m.View().Content); !strings.Contains(content, "upstream 401") {
+		t.Errorf("rendered View missing the surfaced error; got:\n%s", content)
+	}
+}
+
+// TestTranscriptSurfacesAbortedTurn verifies a turn that ends with stopReason
+// aborted is flagged rather than returning silently.
+func TestTranscriptSurfacesAbortedTurn(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 40, Height: 12})
+
+	m = apply(t, m, turnEndMsg{msg: agentcore.AssistantMessage{
+		StopReason: agentcore.StopReasonAborted,
+	}})
+
+	var sys string
+	for _, b := range m.transcript.blocks {
+		if b.role == roleSystem {
+			sys = b.text
+		}
+	}
+	if !strings.Contains(sys, "aborted") {
+		t.Errorf("aborted turn not surfaced; system block = %q", sys)
+	}
+}
+
+// TestTranscriptNotesEmptyResponse verifies a clean end_turn that produced no
+// content and no tool results is flagged with a note (with a provider-mismatch
+// hint) instead of returning silently to the prompt — the shape produced when an
+// endpoint accepts the request with a 200 but returns nothing decodable.
+func TestTranscriptNotesEmptyResponse(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 40, Height: 12})
+
+	m = apply(t, m, turnEndMsg{msg: agentcore.AssistantMessage{
+		StopReason: agentcore.StopReasonEndTurn,
+	}})
+
+	var sys string
+	for _, b := range m.transcript.blocks {
+		if b.role == roleSystem {
+			sys = b.text
+		}
+	}
+	if !strings.Contains(sys, "empty response from the model") {
+		t.Errorf("empty response not flagged; system block = %q", sys)
+	}
+}
+
+// TestTranscriptCleanTurnNoNote verifies a normal turn with content does NOT add
+// a spurious error/empty system note.
+func TestTranscriptCleanTurnNoNote(t *testing.T) {
+	m := apply(t, NewModel(Options{}), tea.WindowSizeMsg{Width: 40, Height: 12})
+
+	m = apply(t, m, turnEndMsg{msg: agentcore.AssistantMessage{
+		StopReason: agentcore.StopReasonEndTurn,
+		Content:    agentcore.ContentList{agentcore.NewTextContent("the answer")},
+	}})
+
+	for _, b := range m.transcript.blocks {
+		if b.role == roleSystem {
+			t.Errorf("clean turn should add no system note, got %q", b.text)
+		}
+	}
+}
+
 // TestTranscriptAutoStick verifies the stick-to-bottom rule: while the viewport
 // is at the bottom, new content keeps it pinned there; once the user scrolls up,
 // streamed content no longer forces a jump to the bottom — but submitting a new
