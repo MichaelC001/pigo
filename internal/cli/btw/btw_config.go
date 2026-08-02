@@ -132,7 +132,7 @@ func ResolveBtwSettings(out io.Writer, host cli.Host) BtwRunSettings {
 func validThinkingLevel(s string) (agentcore.ThinkingLevel, bool) {
 	switch agentcore.ThinkingLevel(s) {
 	case agentcore.ThinkingOff, agentcore.ThinkingMinimal, agentcore.ThinkingLow,
-		agentcore.ThinkingMedium, agentcore.ThinkingHigh, agentcore.ThinkingXHigh:
+		agentcore.ThinkingMedium, agentcore.ThinkingHigh, agentcore.ThinkingXHigh, agentcore.ThinkingMax:
 		return agentcore.ThinkingLevel(s), true
 	default:
 		return "", false

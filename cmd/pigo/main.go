@@ -106,7 +106,7 @@ type cliOptions struct {
 	// updating dream state (the lock is still taken). SPEC §5.5 dry-run row.
 	dreamDryRun bool
 	// thinkingLevel, when non-empty, is the --thinking-level flag: the reasoning
-	// effort for requests (off|minimal|low|medium|high|xhigh). It is the highest-
+	// effort for requests (off|minimal|low|medium|high|xhigh|max). It is the highest-
 	// precedence layer in resolveThinkingLevel, overriding PIGO_THINKING_LEVEL, the
 	// config files, and the built-in default (medium).
 	thinkingLevel string
@@ -173,7 +173,7 @@ func main() {
 	flag.StringVar(&opts.systemPrompt, "system-prompt", "", "system prompt to use instead of the default coding-assistant prompt (mirrors pi --system-prompt)")
 	flag.StringArrayVar(&opts.appendSystemPrompt, "append-system-prompt", nil, "append text or file contents to the system prompt; repeatable (mirrors pi --append-system-prompt)")
 	flag.StringArrayVar(&opts.promptTemplates, "prompt-template", nil, "load a prompt template from a file or directory (non-recursive); repeatable (mirrors pi --prompt-template)")
-	flag.StringVar(&opts.thinkingLevel, "thinking-level", "", "reasoning effort: off|minimal|low|medium|high|xhigh (overrides PIGO_THINKING_LEVEL and config; default medium)")
+	flag.StringVar(&opts.thinkingLevel, "thinking-level", "", "reasoning effort: off|minimal|low|medium|high|xhigh|max (overrides PIGO_THINKING_LEVEL and config; default medium)")
 	flag.BoolVar(&opts.subagentRPC, "subagent-rpc", false, "internal: run as a process-isolated sub-agent JSON-RPC server over stdio (US-019)")
 	flag.BoolVar(&opts.dream, "dream", false, "internal: run a memory-consolidation pass over the global/project memory scope, emit a Report JSON on stdout, and exit (SPEC §4.1)")
 	flag.BoolVar(&opts.dreamDryRun, "dream-dry-run", false, "internal: with --dream, analyze and report without writing files or updating dream state (SPEC §5.5)")

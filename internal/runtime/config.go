@@ -178,7 +178,7 @@ func (c Config) validate() error {
 		return fmt.Errorf("config: invalid toolExecutionMode %q (want parallel|sequential)", c.ToolExecutionMode)
 	}
 	switch c.ThinkingLevel {
-	case agentcore.ThinkingOff, agentcore.ThinkingMinimal, agentcore.ThinkingLow, agentcore.ThinkingMedium, agentcore.ThinkingHigh, agentcore.ThinkingXHigh:
+	case agentcore.ThinkingOff, agentcore.ThinkingMinimal, agentcore.ThinkingLow, agentcore.ThinkingMedium, agentcore.ThinkingHigh, agentcore.ThinkingXHigh, agentcore.ThinkingMax:
 	default:
 		return fmt.Errorf("config: invalid thinkingLevel %q", c.ThinkingLevel)
 	}

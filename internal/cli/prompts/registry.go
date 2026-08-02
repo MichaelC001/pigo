@@ -254,24 +254,24 @@ func RegisterLiveCommands(reg *runtime.SlashRegistry, live *cli.LiveConfig) {
 			if cur == "" {
 				cur = agentcore.ThinkingOff
 			}
-			return fmt.Sprintf("think: %s\nswitch with /think <off|minimal|low|medium|high|xhigh>", cur)
+			return fmt.Sprintf("think: %s\nswitch with /think <off|minimal|low|medium|high|xhigh|max>", cur)
 		}
 		v, ok := validThinkingLevel(lvl)
 		if !ok {
-			return fmt.Sprintf("think: invalid level %q (want off|minimal|low|medium|high|xhigh)", lvl)
+			return fmt.Sprintf("think: invalid level %q (want off|minimal|low|medium|high|xhigh|max)", lvl)
 		}
 		live.ThinkingLevel = v
 		return fmt.Sprintf("think level set to %s (applies to the next turn)", v)
 	}
 	reg.AddBuiltin(runtime.SlashCommand{
 		Name:         "think",
-		ArgumentHint: "[off|minimal|low|medium|high|xhigh]",
+		ArgumentHint: "[off|minimal|low|medium|high|xhigh|max]",
 		Description:  "view or switch the reasoning-effort level; takes effect on the next turn",
 		Action:       thinkAction,
 	})
 	reg.AddBuiltin(runtime.SlashCommand{
 		Name:         "effect",
-		ArgumentHint: "[off|minimal|low|medium|high|xhigh]",
+		ArgumentHint: "[off|minimal|low|medium|high|xhigh|max]",
 		Description:  "alias of /think: view or switch the reasoning-effort level",
 		Action:       thinkAction,
 	})
@@ -334,7 +334,7 @@ func RegisterLiveCommands(reg *runtime.SlashRegistry, live *cli.LiveConfig) {
 func validThinkingLevel(s string) (agentcore.ThinkingLevel, bool) {
 	switch agentcore.ThinkingLevel(s) {
 	case agentcore.ThinkingOff, agentcore.ThinkingMinimal, agentcore.ThinkingLow,
-		agentcore.ThinkingMedium, agentcore.ThinkingHigh, agentcore.ThinkingXHigh:
+		agentcore.ThinkingMedium, agentcore.ThinkingHigh, agentcore.ThinkingXHigh, agentcore.ThinkingMax:
 		return agentcore.ThinkingLevel(s), true
 	default:
 		return "", false

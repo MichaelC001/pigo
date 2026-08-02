@@ -12,6 +12,7 @@ const (
 	ThinkingMedium  ThinkingLevel = "medium"
 	ThinkingHigh    ThinkingLevel = "high"
 	ThinkingXHigh   ThinkingLevel = "xhigh"
+	ThinkingMax     ThinkingLevel = "max"
 )
 
 // ThinkingLevelMap maps a unified level to a provider-specific wire value.

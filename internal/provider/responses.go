@@ -418,7 +418,7 @@ func responsesReasoningEffort(level agentcore.ThinkingLevel) shared.ReasoningEff
 		return shared.ReasoningEffortLow
 	case agentcore.ThinkingMedium:
 		return shared.ReasoningEffortMedium
-	case agentcore.ThinkingHigh, agentcore.ThinkingXHigh:
+	case agentcore.ThinkingHigh, agentcore.ThinkingXHigh, agentcore.ThinkingMax:
 		return shared.ReasoningEffortHigh
 	default:
 		return ""

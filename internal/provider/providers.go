@@ -148,7 +148,7 @@ func openAIReasoningEffort(level agentcore.ThinkingLevel) string {
 		return "low"
 	case agentcore.ThinkingMedium:
 		return "medium"
-	case agentcore.ThinkingHigh, agentcore.ThinkingXHigh:
+	case agentcore.ThinkingHigh, agentcore.ThinkingXHigh, agentcore.ThinkingMax:
 		return "high"
 	default: // off or unset
 		return ""
@@ -396,6 +396,8 @@ func anthropicThinkingBudget(level agentcore.ThinkingLevel) int {
 		return 16384
 	case agentcore.ThinkingXHigh:
 		return 32768
+	case agentcore.ThinkingMax:
+		return 65536
 	default: // off or unset
 		return 0
 	}
