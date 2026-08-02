@@ -158,6 +158,16 @@ func TestResolveProviderExplicitProvider(t *testing.T) {
 	if !strings.Contains(err.Error(), "deepseek") {
 		t.Errorf("unknown-provider error should list available names, got: %v", err)
 	}
+	// An invalid --protocol paired with a named provider surfaces the clear
+	// "unknown --protocol" error (listing the accepted set) rather than a
+	// misleading conflict message.
+	_, _, err = ResolveProvider("deepseek-chat", "", "openai_api", "deepseek", os.Getenv)
+	if err == nil {
+		t.Fatal("provider=deepseek + protocol=openai_api should error")
+	}
+	if !strings.Contains(err.Error(), "unknown --protocol") {
+		t.Errorf("invalid --protocol should surface the unknown-protocol error, got: %v", err)
+	}
 }
 
 // TestResolveProviderCNPresets verifies the Chinese-cloud preset ids route to

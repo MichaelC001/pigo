@@ -136,9 +136,18 @@ func ResolveNamedProvider(name, model, baseURL, protocol string, env func(string
 		return nil, "", fmt.Errorf("unknown --provider %q (available: %s)", name, strings.Join(ProviderNames(), ", "))
 	}
 	// A concurrently-set --protocol must agree with the provider's own protocol;
-	// an incompatible pair is a user error naming both flags.
-	if p := strings.TrimSpace(protocol); p != "" && p != spec.Protocol {
-		return nil, "", fmt.Errorf("--provider %q speaks the %q protocol, which conflicts with --protocol %q; drop --protocol or set it to %q", name, spec.Protocol, p, spec.Protocol)
+	// an incompatible pair is a user error naming both flags. Normalize the raw
+	// value first so aliases (e.g. "openai/chat" for an "openai" spec) don't
+	// falsely conflict, and a genuine typo surfaces as a clear "unknown --protocol"
+	// error rather than a misleading conflict message.
+	if strings.TrimSpace(protocol) != "" {
+		canonical, err := NormalizeProtocol(protocol)
+		if err != nil {
+			return nil, "", err
+		}
+		if canonical != spec.Protocol {
+			return nil, "", fmt.Errorf("--provider %q speaks the %q protocol, which conflicts with --protocol %q; drop --protocol or set it to %q", name, spec.Protocol, protocol, spec.Protocol)
+		}
 	}
 	// Special-auth providers (Azure / Bedrock / Vertex / Cloudflare) compose
 	// their endpoint from several env vars and/or need non-standard credential
