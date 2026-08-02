@@ -16,8 +16,8 @@ func TestLookupProviderSpec_Hit(t *testing.T) {
 	if spec.DefaultBaseURL != "https://api.deepseek.com" {
 		t.Errorf("DefaultBaseURL = %q, want https://api.deepseek.com", spec.DefaultBaseURL)
 	}
-	if spec.Protocol != ProtocolOpenAI {
-		t.Errorf("Protocol = %q, want %q", spec.Protocol, ProtocolOpenAI)
+	if spec.Protocol != ProtocolOpenAIResponses {
+		t.Errorf("Protocol = %q, want %q", spec.Protocol, ProtocolOpenAIResponses)
 	}
 	if len(spec.EnvVars) != 1 || spec.EnvVars[0] != "DEEPSEEK_API_KEY" {
 		t.Errorf("EnvVars = %v, want [DEEPSEEK_API_KEY]", spec.EnvVars)
@@ -146,7 +146,7 @@ func TestRegistryContainsAllExpectedProviders(t *testing.T) {
 		if len(spec.EnvVars) == 0 {
 			t.Errorf("provider %q has no EnvVars", spec.Name)
 		}
-		if spec.Protocol != ProtocolOpenAI && spec.Protocol != ProtocolAnthropic {
+		if spec.Protocol != ProtocolOpenAI && spec.Protocol != ProtocolAnthropic && spec.Protocol != ProtocolOpenAIResponses {
 			t.Errorf("provider %q has invalid Protocol %q", spec.Name, spec.Protocol)
 		}
 	}

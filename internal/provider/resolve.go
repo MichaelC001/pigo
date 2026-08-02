@@ -168,9 +168,11 @@ func ResolveNamedProvider(name, model, baseURL, protocol string, env func(string
 		return NewAnthropicProtocolProvider(spec.Name, url, spec.AuthScheme, models), spec.Name, nil
 	case ProtocolOpenAI:
 		return NewOpenAICompatibleProvider(url, models), spec.Name, nil
+	case ProtocolOpenAIResponses:
+		return NewOpenAIResponsesProvider(spec.Name, url, models), spec.Name, nil
 	default:
-		// The registry only ever stores openai/anthropic; guard anyway so an
-		// unexpected value is a clear error rather than a nil provider.
+		// The registry only ever stores openai/openai-resp/anthropic; guard anyway
+		// so an unexpected value is a clear error rather than a nil provider.
 		return nil, "", fmt.Errorf("--provider %q has unsupported protocol %q", name, spec.Protocol)
 	}
 }

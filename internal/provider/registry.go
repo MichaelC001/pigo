@@ -89,7 +89,7 @@ var providerRegistry = []ProviderSpec{
 		Name:           "deepseek",
 		EnvVars:        []string{"DEEPSEEK_API_KEY"},
 		DefaultBaseURL: "https://api.deepseek.com",
-		Protocol:       ProtocolOpenAI,
+		Protocol:       ProtocolOpenAIResponses,
 		AuthScheme:     AuthBearer,
 	},
 	{

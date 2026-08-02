@@ -128,9 +128,9 @@ func TestResolveProviderExplicitProvider(t *testing.T) {
 	if _, name, err := ResolveProvider("MiniMax-M2", "", "", "minimax", os.Getenv); err != nil || name != "minimax" {
 		t.Errorf("provider=minimax = (%q, %v), want (minimax, nil)", name, err)
 	}
-	// A matching --protocol is not a conflict (deepseek speaks openai).
-	if _, name, err := ResolveProvider("deepseek-chat", "", "openai", "deepseek", os.Getenv); err != nil || name != "deepseek" {
-		t.Errorf("provider=deepseek + protocol=openai = (%q, %v), want (deepseek, nil)", name, err)
+	// A matching --protocol is not a conflict (deepseek speaks openai/resp_api).
+	if _, name, err := ResolveProvider("deepseek-chat", "", "openai/resp_api", "deepseek", os.Getenv); err != nil || name != "deepseek" {
+		t.Errorf("provider=deepseek + protocol=openai/resp_api = (%q, %v), want (deepseek, nil)", name, err)
 	}
 	// --provider wins over model-id heuristics: an ollama/-prefixed id still
 	// resolves to the named provider, not local Ollama.

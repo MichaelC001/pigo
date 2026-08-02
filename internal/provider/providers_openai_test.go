@@ -29,7 +29,6 @@ type openAIWiringCase struct {
 // end-to-end via --provider (US-005). Base URLs mirror the PRD's Technical
 // Considerations table.
 var openAIProviderCases = []openAIWiringCase{
-	{"deepseek", "https://api.deepseek.com", "DEEPSEEK_API_KEY"},
 	{"groq", "https://api.groq.com/openai/v1", "GROQ_API_KEY"},
 	{"xai", "https://api.x.ai/v1", "XAI_API_KEY"},
 	{"cerebras", "https://api.cerebras.ai/v1", "CEREBRAS_API_KEY"},
