@@ -209,13 +209,18 @@ func BuiltinTools(cwd string, disabled bool) []agentcore.AgentTool {
 	// A single recorder is shared by the write and edit tools so /rewind can roll
 	// back every mutation from a turn regardless of which tool made it.
 	snap := agenttool.NewFileSnapshotRecorder()
+	// A single job store is shared by bash, bash_output and kill_bash so a
+	// background command launched by bash is visible to the drain/kill tools.
+	jobs := agenttool.NewBashJobStore()
 	return []agentcore.AgentTool{
 		&agenttool.ReadTool{Root: cwd, ExtraRoots: ReadableExtraRoots()},
 		&agenttool.WriteTool{Root: cwd, ExtraRoots: ReadableExtraRoots(), Snap: snap},
 		&agenttool.EditTool{Root: cwd, ExtraRoots: ReadableExtraRoots(), Snap: snap},
 		&agenttool.GrepTool{Root: cwd},
 		&agenttool.FindTool{Root: cwd},
-		&agenttool.BashTool{Dir: cwd},
+		&agenttool.BashTool{Dir: cwd, Jobs: jobs},
+		&agenttool.BashOutputTool{Jobs: jobs},
+		&agenttool.BashKillTool{Jobs: jobs},
 		&agenttool.TodoTool{Store: agenttool.NewTodoStore()},
 		&agenttool.WebFetchTool{},
 		&agenttool.WebSearchTool{},
@@ -338,6 +343,19 @@ func SnapshotRecorderFromTools(tools []agentcore.AgentTool) *agenttool.FileSnaps
 			if tool.Snap != nil {
 				return tool.Snap
 			}
+		}
+	}
+	return nil
+}
+
+// BashJobStoreFromTools returns the shared BashJobStore backing the run's bash /
+// bash_output / kill_bash tools, or nil when the shell tool is disabled. The
+// REPL uses it to kill any still-running background jobs on exit so they are not
+// orphaned.
+func BashJobStoreFromTools(tools []agentcore.AgentTool) *agenttool.BashJobStore {
+	for _, t := range tools {
+		if bt, ok := t.(*agenttool.BashTool); ok && bt.Jobs != nil {
+			return bt.Jobs
 		}
 	}
 	return nil

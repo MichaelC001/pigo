@@ -155,6 +155,11 @@ type replDeps struct {
 	// turn persists, commitRewindPoint groups them into a restore point tagged with
 	// the pre-turn leaf so /rewind can roll files and the conversation back together.
 	snap *agenttool.FileSnapshotRecorder
+
+	// jobs holds background bash jobs launched with run_in_background. On REPL
+	// exit its still-running jobs are killed so background processes are not
+	// orphaned. nil when the shell tool is disabled.
+	jobs *agenttool.BashJobStore
 }
 
 // replScanBufInit is the initial size of the shared input reader. A REPL user
@@ -212,6 +217,15 @@ func runREPL(in io.Reader, out io.Writer, deps replDeps) error {
 		if deps.remote != nil {
 			_ = deps.remote.server.Stop(context.Background())
 			deps.remote = nil
+		}
+	}()
+
+	// Kill any still-running background bash jobs on exit so long-running
+	// commands (dev servers, watchers) launched with run_in_background are not
+	// orphaned when the REPL quits. No-op when the shell tool is disabled.
+	defer func() {
+		if deps.jobs != nil {
+			deps.jobs.KillAll()
 		}
 	}()
 

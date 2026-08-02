@@ -75,6 +75,9 @@ type BashTool struct {
 	Dir string
 	// Shell is the interpreter path. Empty defaults to "bash".
 	Shell string
+	// Jobs holds background jobs launched with run_in_background. When nil,
+	// run_in_background is rejected (the front-end did not wire a store).
+	Jobs *BashJobStore
 }
 
 // bashToolArgs is the decoded argument shape for BashTool.
@@ -83,6 +86,11 @@ type bashToolArgs struct {
 	Command string `json:"command"`
 	// TimeoutMs optionally overrides the default timeout (milliseconds).
 	TimeoutMs int `json:"timeout_ms,omitempty"`
+	// RunInBackground detaches the command from the turn: it keeps running after
+	// Execute returns, and its output is drained later via bash_output. A
+	// background command has no default timeout (so dev servers/watchers run
+	// indefinitely); timeout_ms still caps it if given.
+	RunInBackground bool `json:"run_in_background,omitempty"`
 }
 
 // Name implements AgentTool.
@@ -92,6 +100,9 @@ func (t *BashTool) Name() string { return "bash" }
 func (t *BashTool) Description() string {
 	return "Run a shell command, streaming stdout/stderr. Supports a timeout " +
 		"and cancellation. A non-zero exit code is reported as an error. " +
+		"Set run_in_background=true for long-running commands (dev servers, " +
+		"watchers): it returns immediately with a bash_id you drain with " +
+		"bash_output and stop with kill_bash. " +
 		"On Windows the command runs under bash if available (Git Bash/WSL), " +
 		"else PowerShell, else cmd — prefer portable commands."
 }
@@ -102,7 +113,8 @@ func (t *BashTool) Schema() json.RawMessage {
   "type": "object",
   "properties": {
     "command":    {"type": "string", "description": "Shell command line to run."},
-    "timeout_ms": {"type": "integer", "description": "Timeout in milliseconds (capped at 10 minutes).", "minimum": 0}
+    "timeout_ms": {"type": "integer", "description": "Timeout in milliseconds (capped at 10 minutes). Ignored in background unless set.", "minimum": 0},
+    "run_in_background": {"type": "boolean", "description": "Run detached and return immediately with a bash_id; drain output with bash_output, stop with kill_bash."}
   },
   "required": ["command"],
   "additionalProperties": false
@@ -175,6 +187,10 @@ func (t *BashTool) Execute(ctx context.Context, id string, args json.RawMessage,
 		return errorResult("bash: command is required"), nil
 	}
 
+	if a.RunInBackground {
+		return t.startBackground(a)
+	}
+
 	timeout := bashDefaultTimeout
 	if a.TimeoutMs > 0 {
 		timeout = time.Duration(a.TimeoutMs) * time.Millisecond
@@ -244,5 +260,69 @@ func (t *BashTool) Execute(ctx context.Context, id string, args json.RawMessage,
 	return agentcore.AgentToolResult{
 		Content: agentcore.ContentList{agentcore.NewTextContent(output)},
 		Details: map[string]any{"exitCode": 0},
+	}, nil
+}
+
+// startBackground launches the command detached from the turn context and
+// returns immediately with a bash_id. The job runs under its own cancelable
+// context (rooted at context.Background(), not the turn ctx which is canceled
+// when the turn ends), so it survives past Execute. A background command has no
+// default timeout — a dev server or watcher is expected to run indefinitely —
+// but an explicit timeout_ms still caps it. Its combined output accumulates in
+// the job's buffer for bash_output to drain; kill_bash cancels its context.
+func (t *BashTool) startBackground(a bashToolArgs) (agentcore.AgentToolResult, error) {
+	if t.Jobs == nil {
+		return errorResult("bash: run_in_background is not available in this environment"), nil
+	}
+
+	var jobCtx context.Context
+	var cancel context.CancelFunc
+	if a.TimeoutMs > 0 {
+		timeout := time.Duration(a.TimeoutMs) * time.Millisecond
+		if timeout > bashMaxTimeout {
+			timeout = bashMaxTimeout
+		}
+		jobCtx, cancel = context.WithTimeout(context.Background(), timeout)
+	} else {
+		jobCtx, cancel = context.WithCancel(context.Background())
+	}
+
+	shell, flag := resolveShell(t.Shell, runtime.GOOS, shellLookPath)
+	cmd := exec.CommandContext(jobCtx, shell, flag, a.Command)
+	if t.Dir != "" {
+		cmd.Dir = t.Dir
+	}
+
+	job := t.Jobs.create(a.Command, cancel)
+	w := job.writer()
+	cmd.Stdout = w
+	cmd.Stderr = w
+
+	if err := cmd.Start(); err != nil {
+		cancel()
+		job.finish(-1, err.Error())
+		return errorResult(fmt.Sprintf("bash: could not start background command: %v", err)), nil
+	}
+
+	go func() {
+		err := cmd.Wait()
+		cancel()
+		exitCode := 0
+		errMsg := ""
+		if err != nil {
+			exitCode = -1
+			var ee *exec.ExitError
+			if errors.As(err, &ee) {
+				exitCode = ee.ExitCode()
+			}
+			errMsg = err.Error()
+		}
+		job.finish(exitCode, errMsg)
+	}()
+
+	msg := fmt.Sprintf("started background command %s: %s\nuse bash_output %q to read its output, kill_bash %q to stop it", job.ID, a.Command, job.ID, job.ID)
+	return agentcore.AgentToolResult{
+		Content: agentcore.ContentList{agentcore.NewTextContent(msg)},
+		Details: map[string]any{"bash_id": job.ID, "background": true},
 	}, nil
 }
