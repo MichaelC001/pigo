@@ -271,6 +271,7 @@ pigo -P anthropic -m claude-3-5-sonnet-20241022 -p "..."
 | `bash` | 执行 shell 命令，流式 stdout/stderr，支持超时与取消 |
 | `todo` | 记录/更新结构化任务清单，每次提交整份列表（pending/in_progress/completed） |
 | `webfetch` | 抓取 URL 并转为精简 Markdown 正文，HTTP 自动升级 HTTPS |
+| `websearch` | 联网搜索并返回标题/URL/摘要，按凭证自动选后端（`TAVILY_API_KEY`→Tavily，`BRAVE_API_KEY`→Brave，否则回落无 key 的 DuckDuckGo），支持 `allowed_domains`/`blocked_domains` 过滤 |
 
 > `bash` / `write` / `edit` 属于"副作用工具"，在未信任目录下需确认（见[项目信任](#项目信任)）。
 

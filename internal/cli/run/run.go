@@ -215,6 +215,7 @@ func BuiltinTools(cwd string, disabled bool) []agentcore.AgentTool {
 		&agenttool.BashTool{Dir: cwd},
 		&agenttool.TodoTool{Store: agenttool.NewTodoStore()},
 		&agenttool.WebFetchTool{},
+		&agenttool.WebSearchTool{},
 	}
 }
 
