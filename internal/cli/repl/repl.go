@@ -644,6 +644,32 @@ func streamRun(ctx context.Context, out io.Writer, deps replDeps, prompt string)
 			for _, tr := range results {
 				ui.RenderToolResult(out, tr)
 			}
+			// Surface a failed turn so a provider/API error is never silent. The
+			// loop delivers request failures as a terminal assistant message with
+			// stopReason error/aborted (they do not ride the run's result error),
+			// so without this the REPL would print nothing at all for, e.g., a 4xx
+			// from the endpoint or an empty/unparseable response.
+			switch msg.StopReason {
+			case agentcore.StopReasonError:
+				reason := strings.TrimSpace(msg.ErrorMessage)
+				if reason == "" {
+					reason = "the provider returned an error with no message"
+				}
+				fmt.Fprintf(out, "%s %s\n", ui.Colorize(ui.Enabled(), ui.Red, "error:"), reason)
+			case agentcore.StopReasonAborted:
+				fmt.Fprintf(out, "%s aborted\n", ui.Colorize(ui.Enabled(), ui.Red, "error:"))
+			default:
+				// A turn that ends cleanly (end_turn) but produced no text, no
+				// thinking, and no tool calls means the endpoint accepted the
+				// request but sent back nothing usable (e.g. a 200 whose body was
+				// not in the wire format this protocol expects). Say so instead of
+				// returning to the prompt with no output.
+				if len(msg.Content) == 0 && len(results) == 0 {
+					fmt.Fprintf(out, "%s empty response from the model (no content). "+
+						"Check that --model, --base-url and --protocol match the same provider.\n",
+						ui.Colorize(ui.Enabled(), ui.Yellow, "note:"))
+				}
+			}
 		},
 	})
 	// A run can end (error or interrupt) with buffered text from a final turn

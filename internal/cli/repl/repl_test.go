@@ -60,7 +60,7 @@ func (p *replProvider) StreamCompletion(ctx context.Context, req provider.Comple
 // store, with a registry carrying one action command and one prompt command so
 // slash dispatch can be exercised. actionRuns/promptResolved report whether each
 // command fired.
-func newTestDeps(t *testing.T, p *replProvider) (replDeps, *session.Store) {
+func newTestDeps(t *testing.T, p provider.Provider) (replDeps, *session.Store) {
 	t.Helper()
 	store, err := session.NewStore(t.TempDir())
 	if err != nil {
@@ -416,6 +416,97 @@ func TestREPLStreamsAndAccumulatesHistory(t *testing.T) {
 	}
 	if len(headers) != 1 {
 		t.Errorf("expected 1 saved session, got %d", len(headers))
+	}
+}
+
+// errProvider streams a single turn that ends with stopReason error carrying an
+// ErrorMessage, mimicking how the loop surfaces a request failure (e.g. a 4xx
+// from the endpoint) as a terminal assistant message rather than a Go error.
+type errProvider struct {
+	reason string
+	calls  int
+}
+
+func (p *errProvider) Name() string { return "faux" }
+func (p *errProvider) Models() []provider.Model {
+	return []provider.Model{{Provider: "faux", ID: "faux"}}
+}
+
+func (p *errProvider) StreamCompletion(ctx context.Context, req provider.CompletionRequest) (*provider.AssistantMessageEventStream, error) {
+	p.calls++
+	partial := agentcore.AssistantMessage{RoleField: agentcore.RoleAssistant}
+	final := partial
+	final.StopReason = agentcore.StopReasonError
+	final.ErrorMessage = p.reason
+	s := provider.NewAssistantMessageEventStream(0)
+	go func() {
+		_ = s.Emit(ctx, provider.StreamStartEvent{Partial: partial})
+		_ = s.Emit(ctx, provider.StreamErrorEvent{Message: final})
+		s.Close()
+	}()
+	return s, nil
+}
+
+// TestREPLSurfacesTurnError verifies a turn that ends with stopReason error is
+// printed to the user instead of returning silently to the prompt. Without this
+// an API failure (delivered as a terminal error message, not a run error) would
+// produce no output at all.
+func TestREPLSurfacesTurnError(t *testing.T) {
+	p := &errProvider{reason: "401 unauthorized: bad api key"}
+	deps, _ := newTestDeps(t, p)
+	deps.live.Provider = p
+	var out bytes.Buffer
+	if err := runREPL(strings.NewReader("hello\n/exit\n"), &out, deps); err != nil {
+		t.Fatalf("runREPL: %v", err)
+	}
+	if p.calls != 1 {
+		t.Fatalf("expected 1 run, got %d", p.calls)
+	}
+	got := out.String()
+	if !strings.Contains(got, "error:") || !strings.Contains(got, "401 unauthorized: bad api key") {
+		t.Errorf("turn error not surfaced to output, out=%q", got)
+	}
+}
+
+// emptyProvider streams a clean end_turn with no content, thinking, or tool
+// calls — the shape produced when an endpoint accepts the request with a 200 but
+// returns nothing this protocol can decode.
+type emptyProvider struct{ calls int }
+
+func (p *emptyProvider) Name() string { return "faux" }
+func (p *emptyProvider) Models() []provider.Model {
+	return []provider.Model{{Provider: "faux", ID: "faux"}}
+}
+
+func (p *emptyProvider) StreamCompletion(ctx context.Context, req provider.CompletionRequest) (*provider.AssistantMessageEventStream, error) {
+	p.calls++
+	partial := agentcore.AssistantMessage{RoleField: agentcore.RoleAssistant}
+	final := partial
+	final.StopReason = agentcore.StopReasonEndTurn
+	s := provider.NewAssistantMessageEventStream(0)
+	go func() {
+		_ = s.Emit(ctx, provider.StreamStartEvent{Partial: partial})
+		_ = s.Emit(ctx, provider.StreamDoneEvent{Message: final})
+		s.Close()
+	}()
+	return s, nil
+}
+
+// TestREPLNotesEmptyResponse verifies a clean turn that produced no output at
+// all is flagged with a note rather than returning silently to the prompt.
+func TestREPLNotesEmptyResponse(t *testing.T) {
+	p := &emptyProvider{}
+	deps, _ := newTestDeps(t, p)
+	deps.live.Provider = p
+	var out bytes.Buffer
+	if err := runREPL(strings.NewReader("hello\n/exit\n"), &out, deps); err != nil {
+		t.Fatalf("runREPL: %v", err)
+	}
+	if p.calls != 1 {
+		t.Fatalf("expected 1 run, got %d", p.calls)
+	}
+	if got := out.String(); !strings.Contains(got, "empty response from the model") {
+		t.Errorf("empty response not flagged, out=%q", got)
 	}
 }
 
