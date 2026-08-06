@@ -25,6 +25,7 @@ pigo 可以读写文件、执行命令、检索代码、抓取网页，并借助
 - [模型与 Provider](#模型与-provider)
 - [内置工具](#内置工具)
 - [运行模式](#运行模式)
+- [作为 SDK 嵌入](#作为-sdk-嵌入)
 - [系统提示词组装](#系统提示词组装)
 - [项目信任](#项目信任)
 - [技能 Skills](#技能-skills)
@@ -342,6 +343,36 @@ REPL 中的内置斜杠命令包括 `/model`、`/models`、`/think`、`/help`、
 输入 `/model ` 时还会从最近使用的模型和内置模型目录中匹配。按 `Tab`
 或右方向键接受当前提示；当有多个匹配时，按上/下方向键可在候选提示之间
 循环选择上一个或下一个，继续输入则会实时缩小匹配范围。
+
+---
+
+## 作为 SDK 嵌入
+
+除命令行外，pigo 也提供一个公共、可导入的 SDK 包，方便把编码智能体嵌入到你自己的 Go 程序中（issue [#554](https://github.com/smallnest/pigo/issues/554)）。
+
+pigo 的实现代码全部位于 `internal/` 下，Go 禁止外部模块导入；`agent` 包是官方支持的接口层，所有导出类型都是 Go 基本类型（`string`、`[]string`、`bool`、`func`），因此你的代码不会依赖任何 pigo 内部类型。
+
+```go
+import "github.com/smallnest/pigo/agent"
+
+sess, err := agent.New(
+    agent.WithModel("claude-opus-4-8"),
+    agent.WithAPIKey(os.Getenv("ANTHROPIC_API_KEY")),
+)
+if err != nil {
+    log.Fatal(err)
+}
+defer sess.Close()
+
+reply, err := sess.Prompt(context.Background(), "用一句话介绍什么是编码智能体")
+fmt.Println(reply)
+```
+
+- **默认启用工具且自动执行**：会话默认拥有全部内置工具，并且不经确认即执行（等价于 CLI 的 `--approve`）。可用 `WithTools`（白名单）、`WithDisallowedTools`（黑名单，始终优先）或 `WithoutTools`（不启用工具）加以约束。
+- **技能与记忆默认关闭**：保持嵌入式会话“隔离”，不读写本机共享状态，可用 `WithSkills` / `WithMemory` 开启。
+- **多轮对话**：同一个 `Session` 会跨调用保留历史；`Reset` 可清空历史。`Session` 非并发安全。
+
+完整的可运行示例（01~07：最小调用、流式输出、模型与推理强度、系统提示词、工具策略、多轮对话、自定义 Provider）见 [`examples/sdk/`](examples/sdk/)，API 文档见 `go doc github.com/smallnest/pigo/agent`。
 
 ---
 
