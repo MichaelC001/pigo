@@ -55,6 +55,12 @@ func SplitToolNames(values []string) []string {
 
 // normalizeToolName is the single definition of how a tool name is compared:
 // surrounding whitespace is insignificant and case is ignored.
+//
+// Note this is deliberately more lenient than runtime.filterToolsByName, which
+// backs a skill frontmatter's allowed-tools and matches case-sensitively. The
+// two are not unified: this policy is user-facing CLI input where Claude-Code
+// habits (Read/Bash) must hit read/bash, whereas skill frontmatter is authored
+// against pigo's canonical lowercase names. Keep them separate on purpose.
 func normalizeToolName(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }

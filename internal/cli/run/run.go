@@ -145,6 +145,13 @@ func SetupEnv(model, baseURL, protocol, providerName, apiKey string, noTools, no
 	if len(tools) == 0 && !noTools && !policy.IsZero() {
 		fmt.Fprintln(os.Stderr, "pigo: warning: the tool policy removed every tool; the model will run without tools")
 	}
+	// --no-tools already disables everything, so a tool policy alongside it has
+	// no effect — and because the set is empty, ValidateToolPolicy above skipped
+	// name validation, meaning a typo here would otherwise pass unnoticed. Say so
+	// rather than letting the user believe a boundary is in force.
+	if noTools && !policy.IsZero() {
+		fmt.Fprintln(os.Stderr, "pigo: warning: --no-tools disables all tools; --allowed-tools/--disallowed-tools are ignored (and unvalidated)")
+	}
 	// Load skills once (shared between prompt injection and /skill-name
 	// registration). A partial parse error still yields the skills that DID load,
 	// so one malformed file is a non-fatal warning rather than a hard failure.

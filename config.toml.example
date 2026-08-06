@@ -33,9 +33,13 @@ no_tools = false
 # it too. An unknown tool name aborts startup with exit code 2 rather than being
 # silently ignored.
 #
-# Passing --allowed-tools/--disallowed-tools on the command line REPLACES these
-# values wholesale (it does not merge), so a CLI flag can widen what the file
-# narrowed. Parameter-level forms such as Bash(git log:*) are not supported yet.
+# Each CLI flag REPLACES its own file value wholesale (it does not merge):
+# --allowed-tools overrides allowed_tools, --disallowed-tools overrides
+# disallowed_tools, independently. So a CLI --allowed-tools can widen what
+# allowed_tools narrowed. Note the two lists stay independent and deny still
+# wins: a file-level disallowed_tools is NOT lifted by a CLI --allowed-tools —
+# to re-admit a tool the file denied, override --disallowed-tools on the CLI.
+# Parameter-level forms such as Bash(git log:*) are not supported yet.
 # allowed_tools = ["read", "grep"]
 # disallowed_tools = ["bash", "bash_output", "kill_bash"]
 

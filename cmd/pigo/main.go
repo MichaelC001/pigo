@@ -282,8 +282,11 @@ func applyFileConfig(opts *cliOptions, cfg config.FileConfig, changed func(strin
 	// The tool boundary follows the standard precedence (CLI > file > default)
 	// rather than the additive treatment prompts get below. Merging would be the
 	// wrong semantics for a security boundary: a user passing --allowed-tools to
-	// widen what the file narrowed must actually get the wider set, not the
-	// intersection.
+	// widen what the file's allowed_tools narrowed must actually get the wider
+	// set, not the intersection. Each flag overrides its own key independently:
+	// --allowed-tools does not clear a file-level disallowed_tools, and because
+	// deny wins on conflict a file deny survives a CLI allow — re-admitting a
+	// file-denied tool requires overriding --disallowed-tools on the CLI.
 	if len(cfg.AllowedTools) > 0 && !changed("allowed-tools") {
 		opts.allowedTools = cfg.AllowedTools
 	}

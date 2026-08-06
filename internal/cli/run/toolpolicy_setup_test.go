@@ -2,6 +2,7 @@ package run
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -159,5 +160,53 @@ func TestSetupEnvSkillsGatedOnFilteredReadTool(t *testing.T) {
 	}
 	if strings.Contains(withoutRead.SysPrompt, "available_skills") {
 		t.Error("denying read must suppress <available_skills>: the model could not load a skill body")
+	}
+}
+
+// captureStderr runs fn with os.Stderr redirected to a pipe and returns whatever
+// was written. It is not safe under t.Parallel — these tests must stay serial.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	orig := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = orig }()
+	fn()
+	w.Close()
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read captured stderr: %v", err)
+	}
+	return string(out)
+}
+
+// TestSetupEnvNoToolsWithPolicyWarns is the counterpart to the typo guarantee:
+// under --no-tools the set is empty, so ValidateToolPolicy cannot flag a
+// misspelled name. Rather than let the boundary silently vanish, SetupEnv must
+// still succeed but print a warning that the policy is inert — otherwise a user
+// combining --no-tools with a (possibly misspelled) --allowed-tools would
+// believe a boundary is in force when none is.
+func TestSetupEnvNoToolsWithPolicyWarns(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "test-key")
+	t.Setenv("PIGO_HOME", t.TempDir())
+
+	var env Env
+	var err error
+	stderr := captureStderr(t, func() {
+		// A deliberately misspelled name: with tools present this would abort with
+		// exit code 2, but --no-tools skips validation, so it must not error.
+		env, err = SetupEnv("openrouter/free", "", "", "", "", true /*noTools*/, true /*noSkills*/, "", nil, false, NewToolPolicy([]string{"raed"}, nil))
+	})
+	if err != nil {
+		t.Fatalf("SetupEnv(--no-tools + policy) = %v, want nil (validation is skipped, not failed)", err)
+	}
+	if len(env.Tools) != 0 {
+		t.Errorf("--no-tools must leave no tools, got %q", names(env.Tools))
+	}
+	if !strings.Contains(stderr, "--no-tools disables all tools") {
+		t.Errorf("expected an inert-policy warning on stderr, got %q", stderr)
 	}
 }

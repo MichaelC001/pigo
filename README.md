@@ -305,11 +305,11 @@ pigo --allowed-tools read --allowed-tools grep -p "..."
 - **黑名单优先。** 同一工具同时出现在两侧时被移除（fail-closed）。
 - **白名单是硬边界，`--approve` 不能绕过。** 过滤发生在工具注册层，早于副作用确认门，所以边界外的工具从未被宣传给模型、也无法被调用。`--approve` 只免掉逐次确认，不放行边界外工具。
 - **子 Agent 继承边界。** `task` 派发的子 Agent 同样受约束，否则"让子 Agent 去跑 bash"就是一条现成的逃逸路径。
-- **拼错立即报错。** 未知工具名会打印全部可用名并以退出码 2 终止，绝不静默忽略——静默忽略会让你以为限制住了而其实没有。
+- **拼错立即报错。** 未知工具名会打印全部可用名并以退出码 2 终止，绝不静默忽略——静默忽略会让你以为限制住了而其实没有。（注：`--no-tools` 已禁用全部工具，此时工具策略不生效也不校验，pigo 会打印一行提示。）
 - **暂不支持参数级匹配。** `Bash(git log:*)`、`Read(src/**)` 这类 Claude Code 语法本期不支持，写成该形式会被当作未知工具名报错。
 - 屏蔽 `read` 时系统提示不再注入 `<available_skills>`，因为模型需要 `read` 才能加载技能正文。
 
-也可在 `config.toml` 中声明默认边界（命令行传入时整体替换文件值，而非合并）：
+也可在 `config.toml` 中声明默认边界。命令行传入时**按 flag 整体替换**对应的文件值（而非合并）：`--allowed-tools` 覆盖 `allowed_tools`、`--disallowed-tools` 覆盖 `disallowed_tools`，彼此独立。因此 CLI `--allowed-tools` 能放宽文件里 `allowed_tools` 收窄的范围；但由于两个列表相互独立且**黑名单始终优先**，文件级 `disallowed_tools` 不会被 CLI `--allowed-tools` 解除——要重新放行被文件拉黑的工具，需在命令行覆盖 `--disallowed-tools`。
 
 ```toml
 allowed_tools = ["read", "grep"]
